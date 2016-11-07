@@ -2,22 +2,6 @@
 from __future__ import absolute_import
 
 
-def print_dict(*args):
-    #
-    for arg in args:
-        if isinstance(arg, dict):
-            #
-            dict_obj = arg
-
-            sorted_item_s = sorted(dict_obj.items(), key=(lambda x: x[0]))
-
-            #
-            for key, value in sorted_item_s:
-                print('{}: {}'.format(key, repr(value)))
-        else:
-            print(repr(arg))
-
-
 def to_uri(
     module=None,
     module_name=None,
@@ -103,3 +87,23 @@ def to_uri(
 
     #
     return obj_uri
+
+
+def chain_filters(filters):
+    # Create combo filter
+    def combo_filter(info):
+        # For each filter
+        for filter in filters:
+            # Call the filter
+            info = filter(info)
+
+            # If the result info is not dict
+            if not isinstance(info, dict):
+                # Return false
+                return False
+
+        # Return result info
+        return info
+
+    # Return combo filter
+    return combo_filter

@@ -172,13 +172,6 @@ class WrapperFinder(object):
         last_step_name = fullname.split('.')[-1]
 
         #
-        # path_list = []
-
-        # if path is not None:
-        #     path_list.extend(path)
-
-        # path_list.extend(sys.path)
-
         path_list = path
 
         #

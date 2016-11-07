@@ -6,7 +6,8 @@ import inspect
 import traceback
 
 # Internal imports
-from aoiktracecall.figlet import print_text
+from aoiktracecall.plugin.figlet_plugin import print_text
+from aoiktracecall.spec import find_matched_spec_info
 from aoiktracecall.state import get_simple_thread_id
 from aoiktracecall.util import to_uri
 
@@ -243,6 +244,48 @@ def format_args(
 _BUILTIN_OBJECTS = tuple(vars(builtins).values())
 
 
+INFO_K_HIGHLIGHT = 'highlight'
+
+
+def printing_filter(info, parsed_specs):
+    #
+    spec_info = find_matched_spec_info(info=info, parsed_specs=parsed_specs)
+
+    #
+    if spec_info is None:
+        #
+        return info
+    else:
+        #
+        highlight_info = None
+
+        #
+        spec_arg = spec_info['spec_arg']
+
+        #
+        if spec_arg == INFO_K_HIGHLIGHT:
+            highlight_info = {
+                'enabled': True,
+            }
+
+        #
+        elif isinstance(spec_arg, set):
+            if INFO_K_HIGHLIGHT in spec_arg:
+                highlight_info = {
+                    'enabled': True,
+                }
+
+        #
+        elif isinstance(spec_arg, dict):
+            highlight_info = spec_arg
+
+        #
+        info[INFO_K_HIGHLIGHT] = highlight_info
+
+        #
+        return info
+
+
 #
 def printing_handler(info, pre_handler=None):
     #
@@ -334,7 +377,7 @@ def printing_handler(info, pre_handler=None):
 
     #
     if self_attr_uri and base_attr_uri:
-        self_base_sep = ' == '
+        self_base_sep = ' -> '
     else:
         self_base_sep = ''
 
@@ -384,11 +427,12 @@ def printing_handler(info, pre_handler=None):
         post_figlet_title = None
 
         #
-        figlet_info = info.get('figlet', None)
+        highlight_info = info.get(INFO_K_HIGHLIGHT, None)
 
-        if figlet_info and figlet_info['enable']:
+        #
+        if highlight_info is not None and highlight_info.get('enabled', True):
             #
-            title = figlet_info.get('title', None)
+            title = highlight_info.get('title', None)
 
             if not title:
                 title = figlet_title

@@ -2,6 +2,7 @@
 from __future__ import absolute_import
 
 # Internal imports
+from aoiktracecall.config import get_config
 from aoiktracecall.state import count_get
 from aoiktracecall.state import get_simple_thread_id
 from aoiktracecall.state import level_add
@@ -74,7 +75,7 @@ def print_text(
 
     if figlet:
         if figlet_format is not None:
-            text = figlet_format(text, width=1000)
+            text = figlet_format(text, width=get_config('FIGLET_WIDTH'))
 
     if indent_unit is not None:
         if indent_by_level:

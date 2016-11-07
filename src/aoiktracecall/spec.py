@@ -6,7 +6,7 @@ from collections import OrderedDict
 import re
 
 
-def parse_specs_by_object(specs):
+def parse_specs(specs):
     #
     obj_uris_dict = OrderedDict()
 
@@ -22,36 +22,21 @@ def parse_specs_by_object(specs):
             if isinstance(spec, (list, tuple)):
                 uri = spec[0]
 
-                spec_value = spec[1]
-
-                if isinstance(spec_value, (bool, str)):
-                    info = {
-                        'spec_value': spec_value,
-                    }
-
-                elif isinstance(spec_value, dict):
-                    info = spec_value.copy()
-
-                    info['spec_value'] = spec_value
-                else:
-                    raise ValueError(spec)
+                info = {
+                    'spec_uri': uri,
+                    'spec_arg': spec[1],
+                }
             else:
                 raise ValueError(spec)
 
             #
-            regex = info.get('regex', None)
-
-            if regex is None:
-                if re.search('[^_.0-9a-zA-Z]', uri):
-                    #
-                    regex = info['regex'] = True
+            is_regex = bool(re.search('[^_.0-9a-zA-Z]', uri))
 
             #
-            regex = info['regex'] = bool(regex)
+            info['regex'] = is_regex
 
             #
-            if regex:
-                #
+            if is_regex:
                 re_spec_s.append((uri, info))
             else:
                 exact_spec_s.append((uri, info))
@@ -64,3 +49,36 @@ def parse_specs_by_object(specs):
 
     #
     return obj_uris_dict
+
+
+def find_matched_spec_info(info, parsed_specs, print_info=False):
+    #
+    uri = info['uri']
+
+    #
+    for pattern, spec_info in parsed_specs.items():
+        #
+        is_regex = spec_info.get('regex', False)
+
+        #
+        if is_regex:
+            #
+            if not pattern.endswith('$'):
+                pattern += '$'
+
+            matched = bool(re.match(pattern, uri))
+        else:
+            matched = (uri == pattern)
+
+        #
+        if matched:
+            if print_info:
+                print('# Match: {}: {}'.format(uri, spec_info))
+
+            return spec_info
+
+    else:
+        if print_info:
+            print('# Match: {}: {}'.format(uri, None))
+
+        return None
