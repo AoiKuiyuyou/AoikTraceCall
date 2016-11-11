@@ -236,7 +236,6 @@ class TraceLoader(WrapperLoader):
             #
             if self.module_failload is not None:
                 self.module_failload({
-                    'module': module,
                     'module_name': module.__name__,
                 })
 
@@ -263,7 +262,17 @@ class TraceLoader(WrapperLoader):
 
     def load_module(self, module_name):
         #
-        module = super(TraceLoader, self).load_module(module_name)
+        try:
+            module = super(TraceLoader, self).load_module(module_name)
+        except Exception:
+            #
+            if self.module_failload is not None:
+                self.module_failload({
+                    'module_name': module_name,
+                })
+
+            #
+            raise
 
         #
         module.__name__ = module_name
