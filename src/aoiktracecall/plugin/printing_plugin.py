@@ -320,9 +320,6 @@ def printing_handler(info, pre_handler=None):
     mro_cls = info.get('mro_cls', None)
 
     #
-    base_cls = mro_cls if mro_cls is not None else cls
-
-    #
     module = info['module']
 
     args = info['args']
@@ -352,42 +349,53 @@ def printing_handler(info, pre_handler=None):
     #
     self_cls = None
 
-    if arg_self is not None:
-        if arg_self.__class__ is not cls:
-            self_cls = arg_self.__class__
+    #
+    attr_uri = None
 
+    #
+    if cls is None:
+        attr_uri = to_uri(module=module, cls=None, attr_name=attr_name)
     else:
-        if attr_name == '__new__':
-            if args:
-                self_cls = args[0]
+        if arg_self is not None:
+            if arg_self.__class__ is not cls:
+                self_cls = arg_self.__class__
+
+        else:
+            if attr_name == '__new__':
+                if args:
+                    self_cls = args[0]
+
+        if self_cls is not None:
+            if isinstance(self_cls, type):
+                if issubclass(self_cls, cls):
+                    attr_uri = to_uri(
+                        module=module, cls=self_cls, attr_name=attr_name
+                    )
+
+        #
+        if attr_uri is None:
+            #
+            attr_uri = to_uri(module=module, cls=cls, attr_name=attr_name)
 
     #
-    if self_cls is None:
-        self_cls = info['class']
-
-    #
-    self_attr_uri = to_uri(module=module, cls=self_cls, attr_name=attr_name)
-
-    #
-    base_attr_uri = to_uri(module=module, cls=base_cls, attr_name=attr_name)
-
-    #
-    if base_attr_uri == self_attr_uri:
-        base_attr_uri = ''
-
-    #
-    if self_attr_uri and base_attr_uri:
-        self_base_sep = ' -> '
+    if mro_cls is None:
+        #
+        mro_cls_attr_uri = ''
     else:
-        self_base_sep = ''
+        #
+        mro_cls_attr_uri = to_uri(
+            module=module, cls=mro_cls, attr_name=attr_name
+        )
+
+        #
+        if mro_cls_attr_uri == attr_uri:
+            mro_cls_attr_uri = ''
 
     #
-    if attr_name == '__init__':
-        figlet_title = to_uri(
-            module_name='', cls=base_cls, attr_name=attr_name)
+    if attr_uri and mro_cls_attr_uri:
+        uri_sep = ' -> '
     else:
-        figlet_title = to_uri(
-            module_name='', cls=self_cls, attr_name=attr_name)
+        uri_sep = ''
 
     #
     msg = None
@@ -399,9 +407,9 @@ def printing_handler(info, pre_handler=None):
             indent_unit * level,
             'T{}'.format(simple_thread_id),
             count,
-            self_attr_uri,
-            self_base_sep,
-            base_attr_uri,
+            attr_uri,
+            uri_sep,
+            mro_cls_attr_uri,
             '( {} )'.format(args_text) if args_text else '')
     elif info_type == 'return':
         result = info['return']
@@ -412,13 +420,28 @@ def printing_handler(info, pre_handler=None):
             indent_unit * level,
             'T{}'.format(simple_thread_id),
             count,
-            self_attr_uri,
-            self_base_sep,
-            base_attr_uri,
+            attr_uri,
+            uri_sep,
+            mro_cls_attr_uri,
             result_repr,
         )
     else:
         raise ValueError(info_type)
+
+    #
+    title_cls = None
+
+    if attr_name == '__init__':
+        if mro_cls is not None:
+            title_cls = mro_cls
+
+    if title_cls is None:
+        if self_cls is not None:
+            title_cls = self_cls
+        else:
+            title_cls = cls
+
+    figlet_title = to_uri(module_name='', cls=title_cls, attr_name=attr_name)
 
     if msg:
         #
