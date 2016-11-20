@@ -14,6 +14,7 @@ from aoiktracecall.config import get_config
 from aoiktracecall.logging import print_log
 from aoiktracecall.state import count_add
 from aoiktracecall.state import level_add
+from aoiktracecall.util import to_origin_uri
 from aoiktracecall.util import to_uri
 
 
@@ -121,7 +122,7 @@ def wrap_callable(old_call, new_call=None):
     else:
         object.__setattr__(new_call, _OLD_CALL_ATTR_NAME, old_call)
 
-        if get_config('WRAP_USING_CALL_WRAPPER_CLASS'):
+        if get_config('WRAP_USING_WRAPPER_CLASS'):
             return CallWrapper(old_call, new_call)
         else:
             return new_call
@@ -149,7 +150,11 @@ class ExceptionInfo(object):
 
 
 #
-_MAP_ORIG_OBJ_TO_WRAP_INFO = {}
+_MAP_MODULE_OR_CLASS_TO_WRAP_INFOS = {}
+
+
+#
+_MAP_CALLABLE_TO_WRAP_INFOS = {}
 
 
 #
@@ -190,7 +195,7 @@ def wrap_call(
     #
     if info is None:
         info = {
-            'uri_type': 'object',
+            'info_type': 'callable',
         }
 
     #
@@ -215,19 +220,19 @@ def wrap_call(
     info.setdefault('class', None)
 
     #
-    info.setdefault('mro_cls', None)
+    info.setdefault('origin_attr_class', None)
 
     #
-    if 'name' not in info:
-        info['name'] = func.__name__
+    if 'attr_name' not in info:
+        info['attr_name'] = func.__name__
 
     #
-    attr_name = info['name']
+    attr_name = info['attr_name']
 
     #
-    if 'uri' not in info:
+    if 'onwrap_uri' not in info:
         #
-        info['uri'] = to_uri(
+        info['onwrap_uri'] = to_uri(
             module=module,
             attr_obj=func,
             attr_name=attr_name,
@@ -238,14 +243,23 @@ def wrap_call(
 
     #
     if filter is not None:
+        # 7AETC
         info = filter(info)
 
         if not isinstance(info, dict):
             return None
 
     #
-    wrap_info_s = _MAP_ORIG_OBJ_TO_WRAP_INFO.setdefault(func, [])
+    wrap_info_s = _MAP_CALLABLE_TO_WRAP_INFOS.setdefault(func, [])
 
+    #
+    if wrap_info_s:
+        #
+        if existwrap is not None:
+            # 3QWOT
+            existwrap(info, wrap_info_s)
+
+    #
     wrap_info_s.append(info)
 
     #
@@ -261,7 +275,7 @@ def wrap_call(
         info_dict = info.copy()
 
         info_dict.update({
-            'type': 'call',
+            'trace_hook_type': 'pre_call',
             'level': level,
             'count': count,
             'func': func,
@@ -273,6 +287,7 @@ def wrap_call(
 
         #
         try:
+            # 5IKXV
             handler(info_dict)
         except Exception:
             #
@@ -296,11 +311,12 @@ def wrap_call(
                 res = ExceptionInfo(sys.exc_info())
 
             #
-            return_info_dict['type'] = 'return'
-            return_info_dict['return'] = res
+            return_info_dict['trace_hook_type'] = 'post_call'
+            return_info_dict['call_result'] = res
 
             #
             try:
+                # 6VPTM
                 handler(return_info_dict)
             except Exception:
                 #
@@ -315,12 +331,25 @@ def wrap_call(
 
     #
     if inspect.isclass(func):
+        # If is Python 2.
+        # Python 2 not supports `__new__` mechanism.
+        if IS_PY2:
+            #
+            return func
+
+        #
         old_cls = func
 
         class new_cls(old_cls):
 
             def __new__(cls, *args, **kwargs):
                 return new_func(*args, **kwargs)
+
+        if hasattr(old_cls, '__name__'):
+            new_cls.__name__ = getattr(old_cls, '__name__')
+
+        if hasattr(old_cls, '__module__'):
+            new_cls.__module__ = getattr(old_cls, '__module__')
 
         res_func = new_cls
     else:
@@ -330,13 +359,12 @@ def wrap_call(
     return res_func
 
 
-def wrap_class(
+def wrap_class_attrs(
     cls,
     filter=None,
     handler=None,
     module=None,
-    class_uri=None,
-    attr_names=None,
+    class_onwrap_uri=None,
     class_existwrap=None,
     call_existwrap=None,
 ):
@@ -351,37 +379,44 @@ def wrap_class(
     if handler is None:
         handler = _default_handler
 
-    #
-    if class_uri is None:
-        class_uri = to_uri(
-            module=module,
-            cls=cls,
-        )
+    # Get class origin URI
+    class_origin_uri = to_uri(module=module, cls=cls)
 
     #
-    print('\n# ----- Process class `{}` -----'.format(class_uri))
+    if not class_onwrap_uri:
+        class_onwrap_uri = class_origin_uri
+
+    #
+    print('\n# ----- Process class `{}` -----'.format(class_onwrap_uri))
 
     #
     class_info = {
-        'uri_type': 'class',
-        'uri': class_uri,
-        'obj': cls,
-        'class': cls,
+        'info_type': 'class',
         'module': module,
+        'class': cls,
+        'obj': cls,
+        'onwrap_uri': class_onwrap_uri,
+        'origin_uri': class_origin_uri,
+        'attr_name': class_onwrap_uri.rpartition('.')[2],
+        'origin_attr_uri': None,
+        'origin_attr_class': None,
     }
 
-    #
+    # 5WGOF
     class_info = filter(class_info)
 
     if not isinstance(class_info, dict):
         return None
 
     #
-    ex_class_info_s = _MAP_ORIG_OBJ_TO_WRAP_INFO.setdefault(cls, [])
+    ex_class_info_s = _MAP_MODULE_OR_CLASS_TO_WRAP_INFOS.setdefault(
+        cls, []
+    )
 
     if ex_class_info_s:
         #
         if class_existwrap is not None:
+            # 7EFWJ
             class_existwrap(class_info, ex_class_info_s)
 
         #
@@ -397,32 +432,27 @@ def wrap_class(
     else:
         mro_class_s = cls.__mro__
 
-    func_infos_dict = {}
+    #
+    map_attr_name_to_info = {}
 
-    # For each MRO class, from base class to subclass
-    for mro_cls in reversed(mro_class_s):
-        if mro_cls is cls:
+    #
+    map_orig_func_to_new_info = {}
+
+    # For each class in the MRO class list, from base class to given class
+    for mro_class in reversed(mro_class_s):
+        if mro_class is cls:
             print('\n# ---- Search class `{}` ----'.format(
-                class_uri
+                class_onwrap_uri
             ))
         else:
             print('\n# ---- Search base class `{}` ----'.format(
-                to_uri(cls=mro_cls))
+                to_uri(cls=mro_class))
             )
 
         # For the MRO class' each attribute
         for attr_name, attr_obj in sorted(
-            vars(mro_cls).items(), key=(lambda x: x[0])
+            vars(mro_class).items(), key=(lambda x: x[0])
         ):
-            #
-            if attr_names:
-                if attr_name not in attr_names:
-                    continue
-
-            #
-            if cls.__name__ == 'ExtendCacheResolver' and attr_name == 'query':
-                print('7KXYW: MRO_CLS:', mro_cls)
-
             # If the attribute is wrappable
             if is_wrappable(attr_obj):
                 #
@@ -430,96 +460,106 @@ def wrap_class(
 
                 assert orig_func is not None
 
-                existing_info_s = _MAP_ORIG_OBJ_TO_WRAP_INFO.setdefault(
-                    orig_func, []
+                #
+                existing_info = None
+
+                #
+                existing_info_s = _MAP_CALLABLE_TO_WRAP_INFOS.get(
+                    orig_func, None
                 )
 
                 if existing_info_s:
                     existing_info = existing_info_s[0]
-                else:
-                    existing_info = None
 
-                # If existing info is not found
+                #
                 if existing_info is None:
-                    containing_class = mro_cls
+                    existing_info = map_orig_func_to_new_info.get(
+                        orig_func, None
+                    )
 
-                    origin_uri = to_uri(
+                #
+                origin_attr_class = None
+
+                #
+                origin_attr_uri = None
+
+                #
+                if existing_info is not None:
+                    #
+                    origin_attr_class = existing_info.get(
+                        'origin_attr_class', None
+                    )
+
+                    #
+                    origin_attr_uri = existing_info.get(
+                        'origin_attr_uri', None
+                    )
+
+                #
+                if origin_attr_class is None:
+                    # Get the class containing the attribute
+                    origin_attr_class = mro_class
+
+                #
+                if origin_attr_uri is None:
+                    #
+                    origin_attr_uri = to_uri(
                         module=module,
-                        cls=containing_class,
-                        attr_obj=attr_obj,
+                        cls=origin_attr_class,
+                        attr_obj=orig_func,
                         attr_name=attr_name,
                     )
 
-                # If existing info is found
-                else:
-                    #
-                    origin_uri = existing_info.get('origin_uri', None)
-
-                    if origin_uri is None:
-                        origin_uri = existing_info['uri']
-
-                        assert origin_uri
-
-                    #
-                    containing_class = existing_info.get('mro_cls', None)
-
-                    if containing_class is None:
-                        containing_class = mro_cls
+                #
+                onwrap_uri = '{}.{}'.format(class_onwrap_uri, attr_name)
 
                 #
-                attr_obj_uri = '{}.{}'.format(class_uri, attr_name)
+                origin_uri = '{}.{}'.format(class_origin_uri, attr_name)
 
                 #
                 info = {
-                    'uri_type': 'class_attr',
+                    'info_type': 'class_attr',
                     'module': module,
-                    # The subclass
                     'class': cls,
-                    # The class containing the attribute
-                    'mro_cls': containing_class,
                     'obj': orig_func,
-                    'uri': attr_obj_uri,
+                    'onwrap_uri': onwrap_uri,
                     'origin_uri': origin_uri,
-                    'name': attr_name,
+                    'attr_name': attr_name,
+                    'origin_attr_uri': origin_attr_uri,
+                    'origin_attr_class': origin_attr_class,
                 }
 
-                # 3YWC7
-                info = filter(info)
+                #
+                map_attr_name_to_info[attr_name] = info
 
-                if isinstance(info, dict):
-                    func_infos_dict[attr_name] = info
-
-                    if existing_info is None:
-                        existing_info_s.append(info)
+                #
+                if existing_info is None:
+                    map_orig_func_to_new_info[orig_func] = info
 
     #
-    print('\n# ---- Wrap class `{}`\'s attributes ----'.format(class_uri))
+    print('\n# ---- Process class `{}`\'s attributes ----'.format(
+        class_onwrap_uri)
+    )
 
+    #
     for _, func_info in sorted(
-        func_infos_dict.items(), key=(lambda x: x[0])
+        map_attr_name_to_info.items(), key=(lambda x: x[0])
     ):
-        cls = func_info['class']
+        #
+        onwrap_uri = func_info['onwrap_uri']
 
+        #
+        print('\n# --- {} ---'.format(onwrap_uri))
+
+        #
         func = func_info['obj']
-
-        attr_name = func_info['name']
-
-        access_uri = func_info['uri']
-
-        origin_uri = func_info['origin_uri']
-
-        if access_uri == origin_uri:
-            print('@: {}'.format(access_uri))
-        else:
-            print('@: {} == {}'.format(
-                access_uri, origin_uri)
-            )
 
         try:
             # Filter is called at 3YWC7 so do not pass in filter here
             new_func = wrap_call(
                 func=func,
                 info=func_info,
+                filter=filter,
                 handler=handler,
                 module=module,
                 existwrap=call_existwrap,
@@ -528,6 +568,14 @@ def wrap_class(
             print_log('# Error (6YAY2)\n---\n{}---\n'.format(
                 traceback.format_exc()))
             continue
+
+        cls = func_info['class']
+
+        attr_name = func_info['attr_name']
+
+        #
+        if attr_name == 'setup_environ':
+            print('6C0O6', func_info)
 
         if new_func is not None:
             try:
@@ -538,17 +586,17 @@ def wrap_class(
                 continue
 
     #
-    print('# ===== Process class `{}` =====\n'.format(class_uri))
+    print('# ===== Process class `{}` =====\n'.format(class_origin_uri))
 
     #
     return orig_cls
 
 
-def wrap_module(
+def wrap_module_attrs(
     module,
     filter=None,
     handler=None,
-    module_uri=None,
+    module_onwrap_uri=None,
     module_existwrap=None,
     class_existwrap=None,
     call_existwrap=None,
@@ -562,31 +610,43 @@ def wrap_module(
         handler = _default_handler
 
     #
-    if not module_uri:
-        module_uri = module.__name__
+    module_origin_uri = module.__name__
+
+    #
+    if not module_onwrap_uri:
+        module_onwrap_uri = module_origin_uri
 
     #
     module_info = {
-        'uri_type': 'module',
-        'uri': module_uri,
+        'info_type': 'module',
         'module': module,
+        'class': None,
+        'obj': None,
+        'onwrap_uri': module_onwrap_uri,
+        'origin_uri': module_origin_uri,
+        'attr_name': None,
+        'origin_attr_uri': None,
+        'origin_attr_class': None,
     }
 
     #
-    print('\n# ----- Process module `{}` -----'.format(module_uri))
+    print('\n# ----- Process module `{}` -----'.format(module_onwrap_uri))
 
-    #
+    # 2D5HA
     module_info = filter(module_info)
 
     if not isinstance(module_info, dict):
         return None
 
     #
-    ex_module_info_s = _MAP_ORIG_OBJ_TO_WRAP_INFO.setdefault(module, [])
+    ex_module_info_s = _MAP_MODULE_OR_CLASS_TO_WRAP_INFOS.setdefault(
+        module, []
+    )
 
     if ex_module_info_s:
         #
         if module_existwrap is not None:
+            # 2A5RL
             module_existwrap(module_info, ex_module_info_s)
 
         #
@@ -597,50 +657,56 @@ def wrap_module(
     #
     for mod_attr_name, mod_attr_obj in vars(module).items():
         #
-        attr_obj_uri = '{}.{}'.format(
-            module_uri, mod_attr_name)
+        onwrap_uri = '{}.{}'.format(module_onwrap_uri, mod_attr_name)
 
         #
         if inspect.isclass(mod_attr_obj):
             #
-            class_uri = '{}.{}'.format(module_uri, mod_attr_name)
+            class_onwrap_uri = '{}.{}'.format(module_onwrap_uri, mod_attr_name)
 
-            #
-            wrap_class(
+            wrap_class_attrs(
                 cls=mod_attr_obj,
                 handler=handler,
                 filter=filter,
                 module=module,
-                class_uri=class_uri,
+                class_onwrap_uri=class_onwrap_uri,
                 class_existwrap=class_existwrap,
                 call_existwrap=call_existwrap,
             )
         #
         elif is_wrappable(mod_attr_obj):
             print(
-                '\n# ----- Process callable `{}` -----'.format(attr_obj_uri)
+                '\n# ----- Process callable `{}` -----'.format(onwrap_uri)
+            )
+
+            #
+            origin_uri = to_origin_uri(
+                module=module,
+                attr_obj=mod_attr_obj,
+                attr_name=mod_attr_name,
             )
 
             #
             info = {
-                'uri_type': 'object',
+                'info_type': 'callable',
                 'module': module,
                 'class': None,
-                'mro_cls': None,
-                'uri': attr_obj_uri,
-                'name': mod_attr_name,
                 'obj': mod_attr_obj,
+                'onwrap_uri': onwrap_uri,
+                'origin_uri': origin_uri,
+                'attr_name': mod_attr_name,
+                'origin_attr_uri': None,
+                'origin_attr_class': None,
             }
 
-            info = filter(info)
-
+            #
             if isinstance(info, dict):
                 try:
                     new_func = wrap_call(
                         func=mod_attr_obj,
                         info=info,
+                        filter=filter,
                         handler=handler,
-                        filter=None,
                         module=module,
                         existwrap=call_existwrap,
                     )
@@ -661,7 +727,7 @@ def wrap_module(
             continue
 
     #
-    print('# ===== Process module `{}` =====\n'.format(module_uri))
+    print('# ===== Process module `{}` =====\n'.format(module_onwrap_uri))
 
     #
     return module

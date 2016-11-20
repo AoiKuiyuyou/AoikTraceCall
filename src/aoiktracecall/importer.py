@@ -6,73 +6,14 @@ import imp
 import sys
 
 # Internal imports
-from aoiktracecall.wrap import wrap_module
+from aoiktracecall.wrap import wrap_module_attrs
 
 
+# Whether is Python 2
 IS_PY2 = (sys.version_info[0] == 2)
 
 
-def import_module(
-    module_name,
-    sys_path=None,
-):
-    #
-    existing_module = sys.modules.get(module_name, None)
-
-    if existing_module is not None:
-        return existing_module
-
-    # E.g. Module name "a.b.c" is split to three step names ['a', 'b', 'c'].
-    step_name_s = module_name.split('.')
-
-    # Parent module name in each step.
-    parent_module_name = ''
-
-    # "sys.path" list used by "imp.find_module" in each step
-    sys_path_list = sys_path
-
-    #
-    for step_name in step_name_s:
-        # If is the first step
-        if not parent_module_name:
-            current_module_name = step_name
-        # If is not the first step
-        else:
-            current_module_name = parent_module_name + '.' + step_name
-
-        #
-        mod_obj = sys.modules.get(current_module_name, None)
-
-        #
-        if mod_obj is None:
-            # Module file object returned by "imp.find_module"
-            module_file = None
-
-            try:
-                # Raise ImportError
-                module_file, module_dir, desc = imp.find_module(
-                    step_name, sys_path_list)
-
-                # Raise any error caused by the imported module
-                mod_obj = imp.load_module(
-                    step_name, module_file, module_dir, desc)
-            finally:
-                if module_file is not None:
-                    module_file.close()
-
-        # Use current module name as parent module name for next step
-        parent_module_name = current_module_name
-
-        # If the module is a package
-        if hasattr(mod_obj, '__path__'):
-            # Use its directory paths as "sys.path" list for the next step
-            sys_path_list = mod_obj.__path__
-
-    #
-    return mod_obj
-
-
-class WrapperLoader(object):
+class ModuleLoader(object):
 
     def __init__(self, spec=None):
         #
@@ -114,7 +55,7 @@ class WrapperLoader(object):
             self.old_loader.exec_module(module)
 
 
-class WrapperFinder(object):
+class ModuleFinder(object):
 
     def __init__(
         self,
@@ -192,12 +133,12 @@ class WrapperFinder(object):
         return self.loader_factory(spec)
 
 
-class TraceLoader(WrapperLoader):
+class TracedCallModuleLoader(ModuleLoader):
 
     def __init__(
         self,
-        filter=None,
-        handler=None,
+        trace_filter=None,
+        trace_handler=None,
         module_spec=None,
         module_failload=None,
         module_postload=None,
@@ -206,12 +147,13 @@ class TraceLoader(WrapperLoader):
         call_existwrap=None,
     ):
         #
-        super(TraceLoader, self).__init__(module_spec)
+        super(TracedCallModuleLoader, self).__init__(module_spec)
 
         #
-        self.trace_filter = filter
+        self.trace_filter = trace_filter
 
-        self.trace_handler = handler
+        #
+        self.trace_handler = trace_handler
 
         #
         self.module_failload = module_failload
@@ -231,7 +173,7 @@ class TraceLoader(WrapperLoader):
     def exec_module(self, module):
         #
         try:
-            super(TraceLoader, self).exec_module(module)
+            super(TracedCallModuleLoader, self).exec_module(module)
         except Exception:
             #
             if self.module_failload is not None:
@@ -251,7 +193,7 @@ class TraceLoader(WrapperLoader):
             })
 
         #
-        wrap_module(
+        wrap_module_attrs(
             module=module,
             filter=self.trace_filter,
             handler=self.trace_handler,
@@ -263,7 +205,9 @@ class TraceLoader(WrapperLoader):
     def load_module(self, module_name):
         #
         try:
-            module = super(TraceLoader, self).load_module(module_name)
+            module = super(TracedCallModuleLoader, self).load_module(
+                module_name
+            )
         except Exception:
             #
             if self.module_failload is not None:
@@ -285,7 +229,7 @@ class TraceLoader(WrapperLoader):
             })
 
         #
-        wrap_module(
+        wrap_module_attrs(
             module=module,
             filter=self.trace_filter,
             handler=self.trace_handler,
@@ -298,14 +242,14 @@ class TraceLoader(WrapperLoader):
         return module
 
 
-class TraceFinder(WrapperFinder):
+class TracedCallModuleFinder(ModuleFinder):
 
     def __init__(
         self,
         meta_path,
         loader_factory,
-        filter,
-        handler,
+        trace_filter,
+        trace_handler,
         module_preload=None,
         module_failload=None,
         module_existwrap=None,
@@ -313,7 +257,7 @@ class TraceFinder(WrapperFinder):
         call_existwrap=None,
     ):
         #
-        super(TraceFinder, self).__init__(
+        super(TracedCallModuleFinder, self).__init__(
             meta_path=meta_path,
             loader_factory=loader_factory,
             module_preload=module_preload,
@@ -321,9 +265,9 @@ class TraceFinder(WrapperFinder):
         )
 
         #
-        self.trace_filter = filter
+        self.trace_filter = trace_filter
 
-        self.trace_handler = handler
+        self.trace_handler = trace_handler
 
         #
         for module in sys.modules.values():
@@ -336,7 +280,7 @@ class TraceFinder(WrapperFinder):
                 continue
 
             #
-            wrap_module(
+            wrap_module_attrs(
                 module=module,
                 filter=self.trace_filter,
                 handler=self.trace_handler,
@@ -346,9 +290,9 @@ class TraceFinder(WrapperFinder):
             )
 
 
-def finder_factory(
-    filter,
-    handler,
+def module_finder_factory(
+    trace_filter,
+    trace_handler,
     module_preload=None,
     module_postload=None,
     module_failload=None,
@@ -356,16 +300,16 @@ def finder_factory(
     class_existwrap=None,
     call_existwrap=None,
 ):
-    #
-    def loader_factory(module_spec):
+    # Create module loader factory
+    def module_loader_factory(module_spec):
         """
-        In Python 2, "WrapperFinder" will pass None to "module_spec".
-        In Python 3, "WrapperFinder" will pass the module spec found.
+        In Python 2, "ModuleFinder" will pass None to "module_spec".
+        In Python 3, "ModuleFinder" will pass the module spec found.
         """
-        #
-        return TraceLoader(
-            filter=filter,
-            handler=handler,
+        # Create module loader
+        return TracedCallModuleLoader(
+            trace_filter=trace_filter,
+            trace_handler=trace_handler,
             module_spec=module_spec,
             module_failload=module_failload,
             module_postload=module_postload,
@@ -374,12 +318,12 @@ def finder_factory(
             call_existwrap=call_existwrap,
         )
 
-    #
-    finder = TraceFinder(
+    # Create module finder
+    module_finder = TracedCallModuleFinder(
         meta_path=sys.meta_path,
-        loader_factory=loader_factory,
-        filter=filter,
-        handler=handler,
+        loader_factory=module_loader_factory,
+        trace_filter=trace_filter,
+        trace_handler=trace_handler,
         module_preload=module_preload,
         module_failload=module_failload,
         module_existwrap=module_existwrap,
@@ -387,5 +331,5 @@ def finder_factory(
         call_existwrap=call_existwrap,
     )
 
-    #
-    return finder
+    # Return module finder
+    return module_finder

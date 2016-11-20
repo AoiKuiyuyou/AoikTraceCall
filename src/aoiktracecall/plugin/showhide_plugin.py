@@ -127,7 +127,7 @@ def showhide_handler(info):
         state_stack = _TLocal.state_stack = []
 
     #
-    info_type = info['type']
+    trace_hook_type = info['trace_hook_type']
 
     #
     func = info['func']
@@ -161,13 +161,13 @@ def showhide_handler(info):
             HIDE_BELOW,
             SHOW_TREE,
             SHOW_BELOW]:
-        if info_type == 'call':
+        if trace_hook_type == 'pre_call':
             state_stack.append((showhide, func))
-        elif info_type == 'return':
+        elif trace_hook_type == 'post_call':
             if state_stack and state_stack[-1][1] is func:
                 state_stack.pop()
         else:
-            raise ValueError(info_type)
+            raise ValueError(trace_hook_type)
 
         if showhide == HIDE_TREE:
             return False

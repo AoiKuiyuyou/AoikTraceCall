@@ -2,20 +2,24 @@
 from __future__ import absolute_import
 
 # Standard imports
+from inspect import isclass
+from pprint import pformat
 import traceback
 
 # Internal imports
-from aoiktracecall.plugin.figlet_plugin import print_text
+from aoiktracecall.config import get_config
 from aoiktracecall.spec import find_matched_spec_info
 from aoiktracecall.state import get_simple_thread_id
+from aoiktracecall.util import print_func_name
+from aoiktracecall.util import print_text
 from aoiktracecall.util import to_uri
+from aoiktracecall.wrap import get_wrapped_obj
 
 # Local imports
 from ..aoikinspectargs import format_inspect_info
 from ..aoikinspectargs import inspect_arguments
 
 
-#
 def _repr_safe(obj, default='?'):
     try:
         #
@@ -77,46 +81,42 @@ def printing_filter(info, parsed_specs):
 
 
 #
-def printing_handler(info, pre_handler=None):
+def printing_handler(info, filter_func=None):
     #
-    if pre_handler is not None:
-        info = pre_handler(info)
+    trace_hook_type = info['trace_hook_type']
 
     #
-    if not isinstance(info, dict):
-        return info
-
-    #
-    info_type = info['type']
+    info_type = info['info_type']
 
     #
     level = info['level']
 
+    #
     count = info['count']
 
     #
-    func = info['func']
-
-    #
-    uri = info['uri']
+    module = info['module']
 
     #
     cls = info['class']
 
     #
-    mro_cls = info.get('mro_cls', None)
+    func = info['func']
 
     #
-    module = info['module']
-
     args = info['args']
 
+    #
     kwargs = info['kwargs']
 
-    attr_name = info['name']
+    #
+    onwrap_uri = info['onwrap_uri']
+
+    #
+    attr_name = info['attr_name']
 
     # `self` argument value
-    arg_self = None
+    self_arg_value = None
 
     # Inspect function arguments
     inspect_info = inspect_arguments(
@@ -124,6 +124,9 @@ def printing_handler(info, pre_handler=None):
         args=args,
         kwargs=kwargs,
     )
+
+    # First argument name
+    first_arg_name = None
 
     # Get fixed argument infos dict
     fixed_arg_infos = inspect_info['fixed_arg_infos']
@@ -139,10 +142,28 @@ def printing_handler(info, pre_handler=None):
             arg_info = fixed_arg_infos['self']
 
             # Get `self` argument value
-            arg_self = arg_info.value
+            self_arg_value = arg_info.value
 
-            # Remove `self` argument info
-            del fixed_arg_infos['self']
+    # If have filter function
+    if filter_func is not None:
+        # Add arguments inspect info to info dict
+        info['arguments_inspect_info'] = inspect_info
+
+        # Call filter function
+        info = filter_func(info)
+
+        # Remove arguments inspect info from info dict
+        info.pop('arguments_inspect_info', None)
+
+        # If returned info is None
+        if info is None:
+            # Ignore
+            return
+
+    # If the first fixed argument name is `self`
+    if first_arg_name == 'self':
+        # Remove `self` argument info
+        fixed_arg_infos.pop('self', None)
 
     # Format function arguments
     args_text = format_inspect_info(
@@ -154,72 +175,66 @@ def printing_handler(info, pre_handler=None):
     simple_thread_id = get_simple_thread_id()
 
     #
-    self_cls = None
+    self_arg_cls = None
 
     #
-    attr_uri = None
+    self_attr_uri = None
 
     #
     if cls is None:
-        attr_uri = to_uri(module=module, cls=None, attr_name=attr_name)
+        self_attr_uri = onwrap_uri
     else:
-        if arg_self is not None:
-            if arg_self.__class__ is not cls:
-                self_cls = arg_self.__class__
+        if self_arg_value is not None:
+            self_arg_cls = self_arg_value.__class__
 
         else:
             if attr_name == '__new__':
                 if args:
-                    self_cls = args[0]
-
-        if self_cls is not None:
-            if isinstance(self_cls, type):
-                if issubclass(self_cls, cls):
-                    attr_uri = to_uri(
-                        module=module, cls=self_cls, attr_name=attr_name
-                    )
+                    self_arg_cls = args[0]
 
         #
-        if attr_uri is None:
+        if self_arg_cls is not cls:
+
             #
-            attr_uri = to_uri(module=module, cls=cls, attr_name=attr_name)
+            if isclass(self_arg_cls) and issubclass(self_arg_cls, cls):
+                #
+                self_attr_uri = to_uri(
+                    module=module, cls=self_arg_cls, attr_name=attr_name
+                )
+
+        #
+        if self_attr_uri is None:
+            #
+            self_attr_uri = onwrap_uri
 
     #
-    if mro_cls is None:
-        #
-        mro_cls_attr_uri = ''
-    else:
-        #
-        mro_cls_attr_uri = to_uri(
-            module=module, cls=mro_cls, attr_name=attr_name
-        )
-
-        #
-        if mro_cls_attr_uri == attr_uri:
-            mro_cls_attr_uri = ''
+    origin_attr_uri_shown = \
+        info.get('origin_attr_uri', None) or ''
 
     #
-    if attr_uri and mro_cls_attr_uri:
+    if origin_attr_uri_shown == self_attr_uri:
+        origin_attr_uri_shown = ''
+
+    #
+    if self_attr_uri and origin_attr_uri_shown:
         uri_sep = ' -> '
     else:
         uri_sep = ''
 
     #
-    msg = None
-
     indent_unit = '        '
 
-    if info_type == 'call':
+    if trace_hook_type == 'pre_call':
         msg = '{}+ {}: {}: {}{}{} => {}'.format(
             indent_unit * level,
             'T{}'.format(simple_thread_id),
             count,
-            attr_uri,
+            self_attr_uri,
             uri_sep,
-            mro_cls_attr_uri,
+            origin_attr_uri_shown,
             '( {} )'.format(args_text) if args_text else '')
-    elif info_type == 'return':
-        result = info['return']
+    elif trace_hook_type == 'post_call':
+        result = info['call_result']
 
         result_repr = _repr_safe(result)
 
@@ -227,74 +242,178 @@ def printing_handler(info, pre_handler=None):
             indent_unit * level,
             'T{}'.format(simple_thread_id),
             count,
-            attr_uri,
+            self_attr_uri,
             uri_sep,
-            mro_cls_attr_uri,
+            origin_attr_uri_shown,
             result_repr,
         )
     else:
-        raise ValueError(info_type)
+        raise ValueError(trace_hook_type)
 
     #
-    title_cls = None
+    if self_arg_cls is not None:
+        highlighted_cls = self_arg_cls
+    else:
+        highlighted_cls = cls
 
-    if attr_name == '__init__':
-        if mro_cls is not None:
-            title_cls = mro_cls
+    # Get origin attribute class
+    origin_attr_class = info.get('origin_attr_class', None)
 
-    if title_cls is None:
-        if self_cls is not None:
-            title_cls = self_cls
+    # If have origin attribute class
+    if origin_attr_class is not None:
+        # If origin attribute class is not highlighted class
+        if origin_attr_class is not highlighted_cls:
+            # If the function is constructor
+            if attr_name == '__init__':
+                # Use origin attribute class as highlighted class
+                highlighted_cls = origin_attr_class
+
+            # If the config says not use `self` class
+            elif not get_config('HIGHLIGHT_TITLE_SHOW_SELF_CLASS'):
+                # Use origin attribute class as highlighted class
+                highlighted_cls = origin_attr_class
+
+            # If info type is `class_attr`
+            elif info_type == 'class_attr':
+                # If have `self` class
+                if self_arg_cls is not None:
+                    # If `self` class is not origin attribute class
+                    if self_arg_cls is not origin_attr_class:
+                        # Get origin function
+                        origin_func = getattr(origin_attr_class, attr_name)
+
+                        # Get wrapped object if it is a wrapper
+                        origin_func = get_wrapped_obj(origin_func, origin_func)
+
+                        # Get function on `self` class
+                        onself_func = getattr(self_arg_cls, attr_name, None)
+
+                        # If have function on `self` class
+                        if onself_func is not None:
+                            # Get wrapped object if it is a wrapper
+                            onself_func = get_wrapped_obj(
+                                onself_func, onself_func
+                            )
+
+                            # If the function on `self` class is not the origin
+                            # function.
+                            # It means the `self` class has defined same-name
+                            # attribute. But the origin class' attribute is
+                            # called. This is the case of calling super method.
+                            if onself_func is not origin_func:
+                                # Use origin attribute class as highlighted
+                                # class
+                                highlighted_cls = origin_attr_class
+
+    #
+    highlighted_title = to_uri(
+        module_name='',
+        cls=highlighted_cls,
+        attr_name=attr_name,
+    )
+
+    #
+    pre_figlet_title = None
+
+    post_figlet_title = None
+
+    #
+    highlight_info = info.get(INFO_K_HIGHLIGHT, None)
+
+    #
+    if highlight_info is not None and highlight_info.get('enabled', True):
+        #
+        title = highlight_info.get('title', None)
+
+        if not title:
+            title = highlighted_title
+
+        #
+        if trace_hook_type == 'pre_call':
+            pre_figlet_title = title
         else:
-            title_cls = cls
+            post_figlet_title = title
 
-    figlet_title = to_uri(module_name='', cls=title_cls, attr_name=attr_name)
+    #
+    if pre_figlet_title is not None:
+        print_func_name(
+            '+ {}'.format(pre_figlet_title), count=count, figlet=True)
 
-    if msg:
+    #
+    try:
+        print(msg)
+    except Exception:
+        exc_msg = '{}\n# Error\n---\n{}---\n'.format(
+            onwrap_uri,
+            traceback.format_exc(),
+        )
+
+        print(exc_msg)
+
+    #
+    if hasattr(func, '__code__'):
         #
-        pre_figlet_title = None
-
-        post_figlet_title = None
+        need_print_lineno = False
 
         #
-        highlight_info = info.get(INFO_K_HIGHLIGHT, None)
-
-        #
-        if highlight_info is not None and highlight_info.get('enabled', True):
+        if trace_hook_type == 'pre_call':
             #
-            title = highlight_info.get('title', None)
+            if get_config('SHOW_FUNC_FILE_PATH_LINENO_PRE_CALL'):
+                #
+                need_print_lineno = True
 
-            if not title:
-                title = figlet_title
+        #
+        if trace_hook_type == 'post_call':
+            #
+            if get_config('SHOW_FUNC_FILE_PATH_LINENO_POST_CALL'):
+                #
+                need_print_lineno = True
+
+        #
+        if need_print_lineno:
+            #
+            func_code_obj = func.__code__
 
             #
-            if info_type == 'call':
-                pre_figlet_title = title
-            else:
-                post_figlet_title = title
-
-        #
-        if pre_figlet_title is not None:
-            print_text(
-                '+ {}'.format(pre_figlet_title), count=count, figlet=True)
-
-        #
-        try:
-            print(msg)
-        except Exception:
-            exc_msg = '{}\n# Error\n---\n{}---\n'.format(
-                uri,
-                traceback.format_exc(),
+            file_path_lineno = '# {} Line: {}'.format(
+                func_code_obj.co_filename,
+                func_code_obj.co_firstlineno,
             )
 
-            print(exc_msg)
+            #
+            print_text(file_path_lineno)
 
-        #
-        if post_figlet_title is not None:
-            print_text(
-                '- {}'.format(post_figlet_title), count=count, figlet=True)
+    # If need print debug info
+    if get_config('PRINTING_HANDLER_SHOW_DEBUG_INFO'):
+        # If is before call the wrapped function
+        if trace_hook_type == 'pre_call':
+            # Get info dict copy
+            debug_info = info.copy()
 
-            post_figlet_title = None
+            # Set internal variables
+            debug_info['_INTERNAL_VARIABLES_'] = {
+                'self_arg_cls': self_arg_cls,
+                'self_arg_value': self_arg_value,
+                'self_attr_uri': self_attr_uri,
+                'highlighted_cls': highlighted_cls,
+                'highlighted_title': highlighted_title,
+                'origin_attr_uri_shown': origin_attr_uri_shown,
+            }
+
+            # Print title
+            print_text('# `printing_handler` debug:')
+
+            # Print debug info dict
+            print_text(pformat(debug_info, indent=4))
+
+            print('')
+
+    #
+    if post_figlet_title is not None:
+        print_func_name(
+            '- {}'.format(post_figlet_title), count=count, figlet=True)
+
+        post_figlet_title = None
 
     #
     return info

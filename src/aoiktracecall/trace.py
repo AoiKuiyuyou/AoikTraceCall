@@ -9,9 +9,8 @@ from types import ModuleType
 
 # Internal imports
 from aoiktracecall.config import get_config
-from aoiktracecall.importer import finder_factory
+from aoiktracecall.importer import module_finder_factory
 from aoiktracecall.plugin.exception_plugin import reject_exception
-from aoiktracecall.plugin.figlet_plugin import print_text
 from aoiktracecall.plugin.printing_plugin import printing_filter
 from aoiktracecall.plugin.printing_plugin import printing_handler
 from aoiktracecall.plugin.showhide_plugin import showhide_filter
@@ -31,14 +30,15 @@ from aoiktracecall.state import module_failload_set
 from aoiktracecall.state import module_postload_set
 from aoiktracecall.state import module_preload_set
 from aoiktracecall.util import chain_filters
+from aoiktracecall.util import print_func_name
 from aoiktracecall.wrap import wrap_call
-from aoiktracecall.wrap import wrap_class
-from aoiktracecall.wrap import wrap_module
+from aoiktracecall.wrap import wrap_class_attrs
+from aoiktracecall.wrap import wrap_module_attrs
 
 
 def create_and_hook_module_finder(
-    filter,
-    handler,
+    trace_filter,
+    trace_handler,
     module_preload=None,
     module_postload=None,
     module_failload=None,
@@ -55,9 +55,20 @@ def create_and_hook_module_finder(
         function will be called. The handler function can do arbitrary things,
         e.g. printing the call arguments and result value.
 
-    :param filter: Filter function.
+    :param trace_filter: Trace filter function.
 
-    :param handler: Handler function.
+    It is called to decide whether to trace an object.
+
+    Called at 2D5HA to filter a module.
+    Called at 5WGOF to filter a class.
+    Called at 7AETC to filter a callable.
+
+    :param trace_handler: Trace handler function.
+
+    It is called before and after a traced callable is called.
+
+    Called at 5IKXV before a traced callable is called.
+    Called at 6VPTM after a traced callable is called.
 
     :param module_preload: Module pre-load callback.
 
@@ -65,42 +76,42 @@ def create_and_hook_module_finder(
 
     :param module_failload: Module fail-load callback.
 
-    :param module_existwrap: Module exist-wrapper callback.
+    :param module_existwrap: Module exist-wrapper callback. Called at 2A5RL.
 
-    :param class_existwrap: Class exist-wrapper callback.
+    :param class_existwrap: Class exist-wrapper callback. Called at 7EFWJ.
 
-    :param call_existwrap: Function exist-wrapper callback.
+    :param call_existwrap: Function exist-wrapper callback. Called at 3QWOT.
 
     :return: None.
     """
-    # Set filter function
-    filter_set(filter)
+    # Set global filter function
+    filter_set(trace_filter)
 
-    # Set handler function
-    handler_set(handler)
+    # Set global handler function
+    handler_set(trace_handler)
 
-    # Set module pre-load callback
+    # Set global module pre-load callback
     module_preload_set(module_preload)
 
-    # Set module post-load callback
+    # Set global module post-load callback
     module_postload_set(module_postload)
 
-    # Set module fail-load callback
+    # Set global module fail-load callback
     module_failload_set(module_failload)
 
-    # Set module exist-wrapper callback
+    # Set global module exist-wrapper callback
     module_existwrap_set(module_existwrap)
 
-    # Set class exist-wrapper callback
+    # Set global class exist-wrapper callback
     class_existwrap_set(class_existwrap)
 
-    # Set function exist-wrapper callback
+    # Set global function exist-wrapper callback
     call_existwrap_set(call_existwrap)
 
     # Create module finder
-    finder = finder_factory(
-        filter=filter,
-        handler=handler,
+    module_finder = module_finder_factory(
+        trace_filter=trace_filter,
+        trace_handler=trace_handler,
         module_preload=module_preload,
         module_postload=module_postload,
         module_failload=module_failload,
@@ -109,8 +120,8 @@ def create_and_hook_module_finder(
         call_existwrap=call_existwrap,
     )
 
-    # Hook the module finder
-    sys.meta_path = [finder]
+    # Hook module finder
+    sys.meta_path = [module_finder]
 
 
 def trace_calls_in_obj(
@@ -119,8 +130,6 @@ def trace_calls_in_obj(
     filter=None,
     handler=None,
     module=None,
-    class_uri=None,
-    attr_names=None,
     module_existwrap=None,
     class_existwrap=None,
     call_existwrap=None,
@@ -138,11 +147,6 @@ def trace_calls_in_obj(
 
     :param module: Containing module for class or function. Unused if given \
         object is module.
-
-    :param class_uri: Class object URI.
-
-    :param attr_names: Class object's attribute names to include. Default is \
-        use all attribute names.
 
     :param module_existwrap: Module exist-wrapper callback. Default is use \
         global one.
@@ -181,8 +185,8 @@ def trace_calls_in_obj(
 
     # If given object is module
     if isinstance(obj, ModuleType):
-        # Delegate call to `wrap_module`
-        return wrap_module(
+        # Delegate call to `wrap_module_attrs`
+        return wrap_module_attrs(
             module=obj,
             filter=filter,
             handler=handler,
@@ -193,14 +197,12 @@ def trace_calls_in_obj(
 
     # If given object is class
     elif inspect.isclass(obj):
-        # Delegate call to `wrap_class`
-        return wrap_class(
+        # Delegate call to `wrap_class_attrs`
+        return wrap_class_attrs(
             cls=obj,
             filter=filter,
             handler=handler,
             module=module,
-            class_uri=class_uri,
-            attr_names=attr_names,
             class_existwrap=class_existwrap,
             call_existwrap=call_existwrap,
         )
@@ -244,25 +246,28 @@ def trace_calls_in_this_module():
     trace_calls_in_obj(func_module)
 
 
-def trace_calls_in_specs(specs):
+def trace_calls_in_specs(
+    specs,
+    printing_handler_filter_func=None,
+):
     """
     Trace callables according to given specs.
 
     :param specs: Specs.
 
-    :param showhide_filter: Global filter.
+    :param printing_handler_filter_func: `printing_handler`'s filter function.
 
     :return: None.
     """
     # Print info
     print('')
-    print_text('+ trace_calls_in_specs', level_step_before=1, figlet=True)
+    print_func_name('+ trace_calls_in_specs', level_step_before=1, figlet=True)
+
+    # Print info
+    print('\n# ----- Parse specs -----')
 
     # Parse specs
     parsed_specs = parse_specs(specs)
-
-    # Print info
-    print('\n# Parsed specs:')
 
     # For each parsed spec item
     for uri, opts_dict in parsed_specs.items():
@@ -273,62 +278,86 @@ def trace_calls_in_specs(specs):
     def module_preload(info):
         module_name = info['module_name']
 
-        print_text(
+        print_func_name(
             '+ * {}'.format(module_name), level_step_before=1, count=False)
 
     # Create module fail-load callback
     def module_failload(info):
         module_name = info['module_name']
 
-        print_text(
+        print_func_name(
             '! * {}'.format(module_name), level_step_after=-1, count=False)
 
     # Create module post-load callback
     def module_postload(info):
         module_name = info['module_name']
 
-        print_text(
+        print_func_name(
             '- * {}'.format(module_name), level_step_after=-1, count=False)
 
     def existwrap(info, ex_info_s):
-        pass
+        # Get info type.
+        # Allowed values: 'module', 'class', 'class_attr', 'callable'.
+        info_type = info['info_type']
+
+        #
+        if info_type != 'class_attr':
+            # Get onwrap URI
+            onwrap_uri = info['onwrap_uri']
+
+            # Get the first existing info
+            ex_info = ex_info_s[0]
+
+            # If info type is `callable`
+            if info_type == 'callable':
+                # Print message
+                print('@@: {0} == {1}'.format(
+                    onwrap_uri, ex_info['onwrap_uri'])
+                )
+
+            # If info type is not `callable`
+            else:
+                # Print message
+                print('!!: {0} == {1}'.format(
+                    onwrap_uri, ex_info['onwrap_uri'])
+                )
 
     # Create filter function
     def showhide_filter_wrapper(info):
-        # module, class, class_attr, object
-        uri_type = info['uri_type']
+        # Get info type.
+        # Allowed values: 'module', 'class', 'class_attr', 'callable'.
+        info_type = info['info_type']
 
-        uri = info['uri']
+        # Get onwrap URI
+        onwrap_uri = info['onwrap_uri']
 
+        # Get origin URI
         origin_uri = info.get('origin_uri', None)
 
-        #
-        if uri_type in ('class', 'object'):
-            obj = info['obj']
+        # Get origin attribute URI
+        origin_attr_uri = info.get('origin_attr_uri', None)
 
-            module = info['module']
+        # If info type is `class_attr`
+        if info_type == 'class_attr':
+            # If origin attribute URI and onwrap URI are different
+            if origin_attr_uri and (origin_attr_uri != onwrap_uri):
+                # If config `WRAP_BASE_CLASS_ATTRIBUTES` is disabled
+                if not get_config('WRAP_BASE_CLASS_ATTRIBUTES'):
+                    # Print message
+                    print('!: {0} == {1}'.format(onwrap_uri, origin_attr_uri))
 
-            #
-            orig_module_name = getattr(
-                obj, '__module__', module.__name__
-            )
-
-            if orig_module_name != module.__name__:
-                name = uri.split('.')[-1]
-
-                orig_uri = '{}.{}'.format(orig_module_name, name)
-
-                print('!: {0} == {1}'.format(uri, orig_uri))
-
-                return False
-
-        #
-        if not get_config('WRAP_BASE_CLASS_ATTRIBUTES'):
-            if uri_type == 'class_attr':
-                if uri != origin_uri:
-                    print('!: {0} == {1}'.format(uri, origin_uri))
-
+                    # Return False to not trace the item
                     return False
+
+        # If info type is not `class_attr`
+        else:
+            # If origin URI and onwrap URI are different
+            if origin_uri and (origin_uri != onwrap_uri):
+                # Print message
+                print('!: {0} == {1}'.format(onwrap_uri, origin_uri))
+
+                # Return False to not trace the item
+                return False
 
         # Delegate call to `showhide_filter`
         info = showhide_filter(info=info, parsed_specs=parsed_specs)
@@ -336,36 +365,40 @@ def trace_calls_in_specs(specs):
         #
         print('{0}: {1}'.format(
             '@' if isinstance(info, dict) else '!',
-            uri if (uri == origin_uri or not origin_uri) else
-            '{} == {}'.format(uri, origin_uri),
+            onwrap_uri if (onwrap_uri == origin_uri or not origin_uri) else
+            '{} == {}'.format(onwrap_uri, origin_uri),
         ))
 
         #
         return info
 
-    # Create filter function
-    combo_filter = chain_filters([
+    # Create trace filter
+    trace_filter = chain_filters([
         reject_exception,
         showhide_filter_wrapper,
         partial(printing_filter, parsed_specs=parsed_specs),
     ])
 
-    # Create handler function
-    combo_handler = chain_filters([
+    # Create trace handler
+    trace_handler = chain_filters([
         showhide_handler,
-        printing_handler,
+        partial(
+            printing_handler,
+            filter_func=printing_handler_filter_func,
+        ),
     ])
 
     # Create and hook module finder for tracing callables
     create_and_hook_module_finder(
-        filter=combo_filter,
-        handler=combo_handler,
+        trace_filter=trace_filter,
+        trace_handler=trace_handler,
         module_preload=module_preload,
         module_postload=module_postload,
         module_failload=module_failload,
         module_existwrap=existwrap,
         class_existwrap=existwrap,
+        call_existwrap=existwrap,
     )
 
     # Print info
-    print_text('- trace_calls_in_specs', level_step_after=-1, figlet=True)
+    print_func_name('- trace_calls_in_specs', level_step_after=-1, figlet=True)

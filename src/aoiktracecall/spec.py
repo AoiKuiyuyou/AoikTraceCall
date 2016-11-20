@@ -5,6 +5,9 @@ from __future__ import absolute_import
 from collections import OrderedDict
 import re
 
+# Internal imports
+from aoiktracecall.util import get_info_uris
+
 
 def parse_specs(specs):
     #
@@ -52,8 +55,25 @@ def parse_specs(specs):
 
 
 def find_matched_spec_info(info, parsed_specs, print_info=False):
+    # Get URI list
+    uri_s = get_info_uris(info)
+
+    # Get onwrap URI
+    onwrap_uri = info['onwrap_uri']
+
+    # Get origin URI
+    origin_uri = info.get('origin_uri', None)
+
+    # Get origin attribute URI
+    origin_attr_uri = info.get('origin_attr_uri', None)
+
     #
-    uri = info['uri']
+    uris_text = '{%s%s%s}' % (
+        "'onwrap_uri': {}".format(repr(onwrap_uri)) if onwrap_uri else '',
+        ", 'origin_uri': {}".format(repr(origin_uri)) if origin_uri else '',
+        ", 'origin_attr_uri': {}"\
+        .format(repr(origin_attr_uri)) if origin_attr_uri else '',
+    )
 
     #
     for pattern, spec_info in parsed_specs.items():
@@ -64,21 +84,47 @@ def find_matched_spec_info(info, parsed_specs, print_info=False):
         if is_regex:
             #
             if not pattern.endswith('$'):
+                #
                 pattern += '$'
 
-            matched = bool(re.match(pattern, uri))
-        else:
-            matched = (uri == pattern)
+        #
+        uri = None
 
         #
-        if matched:
-            if print_info:
-                print('# Match: {}: {}'.format(uri, spec_info))
+        matched = None
 
-            return spec_info
+        #
+        for uri in uri_s:
+            #
+            if uri:
+                #
+                if is_regex:
+                    #
+                    matched = bool(re.match(pattern, uri))
+                #
+                else:
+                    #
+                    matched = (pattern == uri)
+
+                #
+                if matched:
+                    #
+                    if print_info:
+                        #
+                        print(
+                            '# Info: {}\n# Spec: {}'.format(
+                                uris_text, spec_info
+                            )
+                        )
+
+                    #
+                    return spec_info
 
     else:
+        #
         if print_info:
-            print('# Match: {}: {}'.format(uri, None))
+            #
+            print('# Info: {}\n# Spec: {}'.format(uris_text, None))
 
+        #
         return None
