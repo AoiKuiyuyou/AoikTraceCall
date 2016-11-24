@@ -3,7 +3,7 @@ from __future__ import absolute_import
 
 
 _CONFIG_DICT = {
-    # Whether wrap callables using wrapper class instead of wrapper function.
+    # Whether use wrapper class.
     #
     # Wrapper class is more adaptive to various types of callables but will
     # break if the code that was using the original function requires a real
@@ -38,8 +38,24 @@ _CONFIG_DICT = {
     # Whether show function's file path and line number in post-call hook
     'SHOW_FUNC_FILE_PATH_LINENO_POST_CALL': False,
 
-    # Whether show `printing_handler`'s debug info
-    'PRINTING_HANDLER_SHOW_DEBUG_INFO': False,
+    # Whether wrapper function should debug info dict's URIs
+    'WRAPPER_FUNC_DEBUG_INFO_DICT_URIS': False,
+
+    # Whether printing handler should debug arguments inspect info
+    'PRINTING_HANDLER_DEBUG_ARGS_INSPECT_INFO': False,
+
+    # Whether printing handler should debug info dict.
+    #
+    # Notice info dict contains called function's arguments and printing these
+    # arguments may cause errors.
+    #
+    'PRINTING_HANDLER_DEBUG_INFO_DICT': False,
+
+    # Whether printing handler should debug info dict, excluding arguments.
+    #
+    # Use this if `PRINTING_HANDLER_DEBUG_INFO_DICT` causes errors.
+    #
+    'PRINTING_HANDLER_DEBUG_INFO_DICT_SAFE': False,
 }
 
 

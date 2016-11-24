@@ -6,6 +6,8 @@ from collections import OrderedDict
 import re
 
 # Internal imports
+from aoiktracecall.logging import print_debug
+from aoiktracecall.util import format_info_dict_uris
 from aoiktracecall.util import get_info_uris
 
 
@@ -23,11 +25,29 @@ def parse_specs(specs):
         #
         for spec in specs:
             if isinstance(spec, (list, tuple)):
+                item_count = len(spec)
+
+                assert item_count >= 2, item_count
+
                 uri = spec[0]
+
+                if item_count == 2:
+                    spec_arg = spec[1]
+
+                    if isinstance(spec_arg, dict):
+                        spec_arg = spec_arg.copy()
+                    elif isinstance(spec_arg, (list, tuple, set)):
+                        spec_arg = list(spec_arg)
+                    else:
+                        spec_arg = [spec_arg]
+                else:
+                    spec_arg = list(spec[1:])
+
+                assert isinstance(spec_arg, (list, dict)), spec_arg
 
                 info = {
                     'spec_uri': uri,
-                    'spec_arg': spec[1],
+                    'spec_arg': spec_arg,
                 }
             else:
                 raise ValueError(spec)
@@ -54,26 +74,12 @@ def parse_specs(specs):
     return obj_uris_dict
 
 
-def find_matched_spec_info(info, parsed_specs, print_info=False):
+def find_matched_spec_info(info, parsed_specs, need_log=False):
     # Get URI list
     uri_s = get_info_uris(info)
 
-    # Get onwrap URI
-    onwrap_uri = info['onwrap_uri']
-
-    # Get origin URI
-    origin_uri = info.get('origin_uri', None)
-
-    # Get origin attribute URI
-    origin_attr_uri = info.get('origin_attr_uri', None)
-
     #
-    uris_text = '{%s%s%s}' % (
-        "'onwrap_uri': {}".format(repr(onwrap_uri)) if onwrap_uri else '',
-        ", 'origin_uri': {}".format(repr(origin_uri)) if origin_uri else '',
-        ", 'origin_attr_uri': {}"\
-        .format(repr(origin_attr_uri)) if origin_attr_uri else '',
-    )
+    uris_text = format_info_dict_uris(info)
 
     #
     for pattern, spec_info in parsed_specs.items():
@@ -109,9 +115,9 @@ def find_matched_spec_info(info, parsed_specs, print_info=False):
                 #
                 if matched:
                     #
-                    if print_info:
+                    if need_log:
                         #
-                        print(
+                        print_debug(
                             '# Info: {}\n# Spec: {}'.format(
                                 uris_text, spec_info
                             )
@@ -122,9 +128,11 @@ def find_matched_spec_info(info, parsed_specs, print_info=False):
 
     else:
         #
-        if print_info:
+        if need_log:
             #
-            print('# Info: {}\n# Spec: {}'.format(uris_text, None))
+            print_debug(
+                '# Info: {}\n# Spec: {}'.format(uris_text, None)
+            )
 
         #
         return None

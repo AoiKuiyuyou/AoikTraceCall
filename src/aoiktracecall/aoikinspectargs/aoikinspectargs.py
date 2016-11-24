@@ -14,7 +14,7 @@ from .aoikenum import enum
 
 
 # Version
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 
 
 # Public attribute names
@@ -162,7 +162,8 @@ def inspect_arguments_py2(func, args, kwargs):
 
     :param kwargs: Function keyword arguments.
 
-    :return: InspectInfo instance.
+    :return: InspectInfo instance. Will raise error if given function is not \
+        supported for inspection.
     """
     # Map fixed argument name to argument info.
     # `fixed` means positional-or-keyword and keyword-only combined.
@@ -194,22 +195,19 @@ def inspect_arguments_py2(func, args, kwargs):
         InspectInfo.K_MISSING_ARG_INFOS: missing_arg_infos,
     })
 
-    try:
-        # Get parameters info tuple
-        # - Positional-or-keyword parameter name list.
-        # - Variable-positional parameter name, e.g. `args` for `*args`.
-        # - Variable-keyword parameter name, e.g. `kwargs` for `**kwargs`.
-        # - Default values for last n positional-or-keyword parameters.
-        argspec = inspect.getargspec(func)  # pylint: disable=deprecated-method
+    # Get parameters info tuple
+    # - Positional-or-keyword parameter name list.
+    # - Variable-positional parameter name, e.g. `args` for `*args`.
+    # - Variable-keyword parameter name, e.g. `kwargs` for `**kwargs`.
+    # - Default values for last n positional-or-keyword parameters.
+    #
+    # Will raise error if given function is not supported for inspection.
+    #
+    argspec = inspect.getargspec(func)  # pylint: disable=deprecated-method
 
-        # Unpack parameters info tuple
-        poskwd_param_names, varpos_param_name, varkwd_param_name, \
-            poskwd_param_defaults = argspec
-
-    # If have error
-    except Exception:
-        # Return inspect info
-        return info
+    # Unpack parameters info tuple
+    poskwd_param_names, varpos_param_name, varkwd_param_name, \
+        poskwd_param_defaults = argspec
 
     # Set positional-or-keyword parameter names in inspect info
     info[InspectInfo.K_POSKWD_PARAM_NAMES] = poskwd_param_names
@@ -488,7 +486,8 @@ def inspect_arguments_py3(func, args, kwargs):
 
     :param kwargs: Function keyword arguments.
 
-    :return: InspectInfo instance.
+    :return: InspectInfo instance. Will raise error if given function is not \
+        supported for inspection.
     """
     # Map fixed argument name to argument info.
     # `fixed` means positional-or-keyword and keyword-only combined.
@@ -519,14 +518,11 @@ def inspect_arguments_py3(func, args, kwargs):
         InspectInfo.K_MISSING_ARG_INFOS: missing_arg_infos,
     })
 
-    try:
-        # Get signature object
-        func_sig = inspect.signature(func)
-
-    # If have error
-    except Exception:
-        # Return inspect info
-        return info
+    # Get signature object.
+    #
+    # Will raise error if given function is not supported for inspection.
+    #
+    func_sig = inspect.signature(func)
 
     # Convert signature to parameter groups
     poskwd_param_s, kwdonly_param_s, varpos_param, \
@@ -775,7 +771,8 @@ def inspect_arguments(func, args, kwargs):
 
     :param kwargs: Function keyword arguments.
 
-    :return: InspectInfo instance.
+    :return: InspectInfo instance. Will raise error if given function is not \
+        supported for inspection.
     """
     # If is Python 2
     if IS_PY2:

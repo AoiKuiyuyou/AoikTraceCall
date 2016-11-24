@@ -4,14 +4,17 @@ from __future__ import absolute_import
 # Standard imports
 from inspect import isclass
 from pprint import pformat
-import traceback
+from traceback import format_exc
 
 # Internal imports
 from aoiktracecall.config import get_config
+from aoiktracecall.logging import print_error
+from aoiktracecall.logging import print_info
 from aoiktracecall.spec import find_matched_spec_info
 from aoiktracecall.state import get_simple_thread_id
-from aoiktracecall.util import print_func_name
-from aoiktracecall.util import print_text
+from aoiktracecall.util import format_func_args
+from aoiktracecall.util import format_func_name
+from aoiktracecall.util import indent_by_level
 from aoiktracecall.util import to_uri
 from aoiktracecall.wrap import get_wrapped_obj
 
@@ -20,7 +23,7 @@ from ..aoikinspectargs import format_inspect_info
 from ..aoikinspectargs import inspect_arguments
 
 
-def _repr_safe(obj, default='?'):
+def _repr_safe(obj, default='<?>'):
     try:
         #
         if hasattr(obj, '__repr__'):
@@ -32,7 +35,14 @@ def _repr_safe(obj, default='?'):
         return text
 
     except Exception as e:
-        print('Error (5HZNN): {}'.format(e))
+        #
+        error_msg = "# Warning: Failed getting argument's text:\n---\n{}---\n"\
+            .format(
+                format_exc()
+            )
+
+        #
+        print_error(indent_by_level(error_msg))
 
     return default
 
@@ -57,21 +67,17 @@ def printing_filter(info, parsed_specs):
         spec_arg = spec_info['spec_arg']
 
         #
-        if spec_arg == INFO_K_HIGHLIGHT:
-            highlight_info = {
-                'enabled': True,
-            }
-
-        #
-        elif isinstance(spec_arg, set):
+        if isinstance(spec_arg, list):
             if INFO_K_HIGHLIGHT in spec_arg:
                 highlight_info = {
                     'enabled': True,
                 }
-
         #
         elif isinstance(spec_arg, dict):
-            highlight_info = spec_arg
+            highlight_info = spec_arg.copy()
+        #
+        else:
+            raise ValueError(spec_arg)
 
         #
         info[INFO_K_HIGHLIGHT] = highlight_info
@@ -118,58 +124,84 @@ def printing_handler(info, filter_func=None):
     # `self` argument value
     self_arg_value = None
 
-    # Inspect function arguments
-    inspect_info = inspect_arguments(
-        func=func,
-        args=args,
-        kwargs=kwargs,
-    )
+    #
+    try:
+        # Inspect function arguments
+        inspect_info = inspect_arguments(
+            func=func,
+            args=args,
+            kwargs=kwargs,
+        )
+    #
+    except Exception:
+        inspect_info = None
 
-    # First argument name
-    first_arg_name = None
+    #
+    args_inspect_info_debug_msg = None
 
-    # Get fixed argument infos dict
-    fixed_arg_infos = inspect_info['fixed_arg_infos']
+    # If need debug arguments inspect info
+    if get_config('PRINTING_HANDLER_DEBUG_ARGS_INSPECT_INFO'):
+        # If hook type is `pre_call`
+        if trace_hook_type == 'pre_call':
+            # Get message
+            args_inspect_info_debug_msg = \
+                '# PRINTING_HANDLER_DEBUG_ARGS_INSPECT_INFO:\n{}\n'.format(
+                    pformat(inspect_info, indent=4, width=1)
+                )
 
-    # If fixed argument infos dict is not empty
-    if fixed_arg_infos:
-        # Get the first fixed argument name
-        first_arg_name = next(iter(fixed_arg_infos))
+    #
+    if inspect_info is None:
+        #
+        args_text = format_func_args(
+            args=args, kwargs=kwargs, repr_func=_repr_safe
+        )
+    #
+    else:
+        # First argument name
+        first_arg_name = None
+
+        # Get fixed argument infos dict
+        fixed_arg_infos = inspect_info['fixed_arg_infos']
+
+        # If fixed argument infos dict is not empty
+        if fixed_arg_infos:
+            # Get the first fixed argument name
+            first_arg_name = next(iter(fixed_arg_infos))
+
+            # If the first fixed argument name is `self`
+            if first_arg_name == 'self':
+                # Get `self` argument info
+                arg_info = fixed_arg_infos['self']
+
+                # Get `self` argument value
+                self_arg_value = arg_info.value
+
+        # If have filter function
+        if filter_func is not None:
+            # Add arguments inspect info to info dict
+            info['arguments_inspect_info'] = inspect_info
+
+            # Call filter function
+            info = filter_func(info)
+
+            # Remove arguments inspect info from info dict
+            info.pop('arguments_inspect_info', None)
+
+            # If returned info is None
+            if info is None:
+                # Ignore
+                return
 
         # If the first fixed argument name is `self`
         if first_arg_name == 'self':
-            # Get `self` argument info
-            arg_info = fixed_arg_infos['self']
+            # Remove `self` argument info
+            fixed_arg_infos.pop('self', None)
 
-            # Get `self` argument value
-            self_arg_value = arg_info.value
-
-    # If have filter function
-    if filter_func is not None:
-        # Add arguments inspect info to info dict
-        info['arguments_inspect_info'] = inspect_info
-
-        # Call filter function
-        info = filter_func(info)
-
-        # Remove arguments inspect info from info dict
-        info.pop('arguments_inspect_info', None)
-
-        # If returned info is None
-        if info is None:
-            # Ignore
-            return
-
-    # If the first fixed argument name is `self`
-    if first_arg_name == 'self':
-        # Remove `self` argument info
-        fixed_arg_infos.pop('self', None)
-
-    # Format function arguments
-    args_text = format_inspect_info(
-        inspect_info,
-        repr_func=repr,
-    )
+        # Format function arguments
+        args_text = format_inspect_info(
+            inspect_info,
+            repr_func=repr,
+        )
 
     #
     simple_thread_id = get_simple_thread_id()
@@ -208,45 +240,54 @@ def printing_handler(info, filter_func=None):
             self_attr_uri = onwrap_uri
 
     #
-    origin_attr_uri_shown = \
-        info.get('origin_attr_uri', None) or ''
+    origin_attr_uri = info.get('origin_attr_uri', None)
 
     #
-    if origin_attr_uri_shown == self_attr_uri:
-        origin_attr_uri_shown = ''
+    if origin_attr_uri and origin_attr_uri != self_attr_uri:
+        self_cls_uri, _, _ = self_attr_uri.rpartition('.')
 
-    #
-    if self_attr_uri and origin_attr_uri_shown:
-        uri_sep = ' -> '
+        func_name_text = '{} -> {}'.format(self_cls_uri, origin_attr_uri)
     else:
-        uri_sep = ''
+        func_name_text = self_attr_uri
 
     #
     indent_unit = '        '
 
+    #
+    indent_text = indent_unit * level
+
+    #
+    if simple_thread_id == 0:
+        thread_text = ''
+    else:
+        thread_text = ' T{}:'.format(simple_thread_id)
+
+    #
+    count_text = ' {}: '.format(count)
+
+    #
     if trace_hook_type == 'pre_call':
-        msg = '{}+ {}: {}: {}{}{} => {}'.format(
-            indent_unit * level,
-            'T{}'.format(simple_thread_id),
-            count,
-            self_attr_uri,
-            uri_sep,
-            origin_attr_uri_shown,
-            '( {} )'.format(args_text) if args_text else '')
+        msg = '{indent}+{thread}{count}{func_name} => {args_text}\n'\
+            .format(
+                indent=indent_text,
+                thread=thread_text,
+                count=count_text,
+                func_name=func_name_text,
+                args_text='( {} )'.format(args_text) if args_text else ''
+            )
     elif trace_hook_type == 'post_call':
         result = info['call_result']
 
         result_repr = _repr_safe(result)
 
-        msg = '{}- {}: {}: {}{}{} <= {}'.format(
-            indent_unit * level,
-            'T{}'.format(simple_thread_id),
-            count,
-            self_attr_uri,
-            uri_sep,
-            origin_attr_uri_shown,
-            result_repr,
-        )
+        msg = '{indent}-{thread}{count}{func_name} <= {result}\n'\
+            .format(
+                indent=indent_text,
+                thread=thread_text,
+                count=count_text,
+                func_name=func_name_text,
+                result=result_repr,
+            )
     else:
         raise ValueError(trace_hook_type)
 
@@ -258,6 +299,9 @@ def printing_handler(info, filter_func=None):
 
     # Get origin attribute class
     origin_attr_class = info.get('origin_attr_class', None)
+
+    #
+    onself_func = None
 
     # If have origin attribute class
     if origin_attr_class is not None:
@@ -279,14 +323,10 @@ def printing_handler(info, filter_func=None):
                 if self_arg_cls is not None:
                     # If `self` class is not origin attribute class
                     if self_arg_cls is not origin_attr_class:
-                        # Get origin function
-                        origin_func = getattr(origin_attr_class, attr_name)
-
-                        # Get wrapped object if it is a wrapper
-                        origin_func = get_wrapped_obj(origin_func, origin_func)
-
                         # Get function on `self` class
-                        onself_func = getattr(self_arg_cls, attr_name, None)
+                        onself_func = vars(self_arg_cls).get(
+                            attr_name, None
+                        )
 
                         # If have function on `self` class
                         if onself_func is not None:
@@ -300,7 +340,7 @@ def printing_handler(info, filter_func=None):
                             # It means the `self` class has defined same-name
                             # attribute. But the origin class' attribute is
                             # called. This is the case of calling super method.
-                            if onself_func is not origin_func:
+                            if onself_func is not func:
                                 # Use origin attribute class as highlighted
                                 # class
                                 highlighted_cls = origin_attr_class
@@ -336,19 +376,22 @@ def printing_handler(info, filter_func=None):
 
     #
     if pre_figlet_title is not None:
-        print_func_name(
-            '+ {}'.format(pre_figlet_title), count=count, figlet=True)
+        print_info(
+            format_func_name(
+                '+ {}'.format(pre_figlet_title), count=count, figlet=True
+            )
+        )
 
     #
     try:
-        print(msg)
+        print_info(msg)
     except Exception:
         exc_msg = '{}\n# Error\n---\n{}---\n'.format(
             onwrap_uri,
-            traceback.format_exc(),
+            format_exc(),
         )
 
-        print(exc_msg)
+        print_info(exc_msg)
 
     #
     if hasattr(func, '__code__'):
@@ -375,43 +418,75 @@ def printing_handler(info, filter_func=None):
             func_code_obj = func.__code__
 
             #
-            file_path_lineno = '# {} Line: {}'.format(
+            file_path_lineno = '# File: {} Line: {}\n'.format(
                 func_code_obj.co_filename,
                 func_code_obj.co_firstlineno,
             )
 
             #
-            print_text(file_path_lineno)
+            print_info(indent_by_level(file_path_lineno))
 
-    # If need print debug info
-    if get_config('PRINTING_HANDLER_SHOW_DEBUG_INFO'):
-        # If is before call the wrapped function
-        if trace_hook_type == 'pre_call':
+    # If hook type is `pre_call`
+    if trace_hook_type == 'pre_call':
+        #
+        need_debug = get_config('PRINTING_HANDLER_DEBUG_INFO_DICT')
+
+        #
+        need_debug_safe = get_config('PRINTING_HANDLER_DEBUG_INFO_DICT_SAFE')
+
+        # If need print debug info
+        if need_debug or need_debug_safe:
             # Get info dict copy
             debug_info = info.copy()
+
+            #
+            if need_debug_safe:
+                #
+                debug_info.pop('args', None)
+
+                #
+                debug_info.pop('kwargs', None)
 
             # Set internal variables
             debug_info['_INTERNAL_VARIABLES_'] = {
                 'self_arg_cls': self_arg_cls,
-                'self_arg_value': self_arg_value,
                 'self_attr_uri': self_attr_uri,
                 'highlighted_cls': highlighted_cls,
                 'highlighted_title': highlighted_title,
-                'origin_attr_uri_shown': origin_attr_uri_shown,
             }
 
-            # Print title
-            print_text('# `printing_handler` debug:')
+            #
+            if onself_func is not None:
+                #
+                debug_info['_INTERNAL_VARIABLES_']['onself_func'] = onself_func
 
-            # Print debug info dict
-            print_text(pformat(debug_info, indent=4))
+            #
+            if not need_debug_safe:
+                debug_info['_INTERNAL_VARIABLES_']['self_arg_value'] = \
+                    self_arg_value
 
-            print('')
+            # Get message
+            msg = '# {}:\n{}\n'.format(
+                'PRINTING_HANDLER_DEBUG_INFO_DICT_SAFE' if
+                need_debug_safe else 'PRINTING_HANDLER_DEBUG_INFO_DICT',
+                pformat(debug_info, indent=4),
+            )
+
+            # Print message
+            print_info(indent_by_level(msg))
+
+    #
+    if args_inspect_info_debug_msg:
+        # Print message
+        print_info(indent_by_level(args_inspect_info_debug_msg))
 
     #
     if post_figlet_title is not None:
-        print_func_name(
-            '- {}'.format(post_figlet_title), count=count, figlet=True)
+        print_info(
+            format_func_name(
+                '- {}'.format(post_figlet_title), count=count, figlet=True
+            )
+        )
 
         post_figlet_title = None
 

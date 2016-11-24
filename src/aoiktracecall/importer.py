@@ -4,8 +4,11 @@ from __future__ import absolute_import
 # Standard imports
 import imp
 import sys
+import traceback
 
 # Internal imports
+from aoiktracecall.logging import print_debug
+from aoiktracecall.logging import print_error
 from aoiktracecall.wrap import wrap_module_attrs
 
 
@@ -79,58 +82,124 @@ class ModuleFinder(object):
     def find_spec(self, fullname, path, target=None):
         #
         if self.module_preload is not None:
+            #
             self.module_preload({
                 'module_name': fullname,
             })
 
         #
         spec = None
-        for loader in self.meta_path:
-            if hasattr(loader, 'find_spec'):
-                spec = loader.find_spec(fullname, path, target)
+
+        #
+        for finder in self.meta_path:
+            #
+            if hasattr(finder, 'find_spec'):
+                #
+                spec = finder.find_spec(fullname, path, target)
+
+                #
                 if spec is not None:
+                    #
                     break
 
+        #
         if spec is not None:
+            #
             spec.loader = self.loader_factory(spec)
         else:
+            #
             if self.module_failload is not None:
-                self.module_failload({
-                    'module': None,
-                    'module_name': fullname,
-                })
+                #
+                try:
+                    #
+                    self.module_failload({
+                        'module': None,
+                        'module_name': fullname,
+                    })
+                #
+                except Exception:
+                    #
+                    error_msg = '# Error (1XCEH)\n---\n{}---\n'.format(
+                        traceback.format_exc()
+                    )
 
+                    #
+                    print_error(error_msg)
+
+        #
         return spec
 
     def find_module(self, fullname, path=None):
         #
         if self.module_preload is not None:
-            self.module_preload({
-                'module_name': fullname,
-            })
-
-        #
-        last_step_name = fullname.split('.')[-1]
-
-        #
-        path_list = path
-
-        #
-        try:
-            spec = imp.find_module(last_step_name, path_list)
-        except Exception:
             #
-            if self.module_failload is not None:
-                self.module_failload({
-                    'module': None,
+            try:
+                #
+                self.module_preload({
                     'module_name': fullname,
                 })
-
             #
-            raise ImportError(fullname)
+            except Exception:
+                #
+                error_msg = '# Error (2VS8S)\n---\n{}---\n'.format(
+                    traceback.format_exc()
+                )
+
+                #
+                print_error(error_msg)
 
         #
-        return self.loader_factory(spec)
+        spec = None
+
+        #
+        for finder in self.meta_path:
+            #
+            if hasattr(finder, 'find_module'):
+                #
+                spec = finder.find_module(fullname, path)
+
+                #
+                if spec is not None:
+                    #
+                    break
+
+        #
+        if spec is not None:
+            #
+            return self.loader_factory(spec)
+        else:
+            #
+            last_step_name = fullname.split('.')[-1]
+
+            #
+            try:
+                #
+                spec = imp.find_module(last_step_name, path)
+            except Exception:
+                #
+                if self.module_failload is not None:
+                    #
+                    try:
+                        #
+                        self.module_failload({
+                            'module': None,
+                            'module_name': fullname,
+                        })
+                    #
+                    except Exception:
+                        #
+                        error_msg = '# Error (3IPKU)\n---\n{}---\n'.format(
+                            traceback.format_exc()
+                        )
+
+                        #
+                        print_error(error_msg)
+
+                #
+                return None
+
+            #
+            return self.loader_factory(spec)
 
 
 class TracedCallModuleLoader(ModuleLoader):
@@ -177,9 +246,20 @@ class TracedCallModuleLoader(ModuleLoader):
         except Exception:
             #
             if self.module_failload is not None:
-                self.module_failload({
-                    'module_name': module.__name__,
-                })
+                #
+                try:
+                    self.module_failload({
+                        'module_name': module.__name__,
+                    })
+                #
+                except Exception:
+                    #
+                    error_msg = '# Error (4ZUBU)\n---\n{}---\n'.format(
+                        traceback.format_exc()
+                    )
+
+                    #
+                    print_error(error_msg)
 
             #
             raise
@@ -187,10 +267,21 @@ class TracedCallModuleLoader(ModuleLoader):
         #
         if self.module_postload is not None:
             #
-            self.module_postload({
-                'module': module,
-                'module_name': module.__name__,
-            })
+            try:
+                #
+                self.module_postload({
+                    'module': module,
+                    'module_name': module.__name__,
+                })
+            #
+            except Exception:
+                #
+                error_msg = '# Error (5POTJ)\n---\n{}---\n'.format(
+                    traceback.format_exc()
+                )
+
+                #
+                print_error(error_msg)
 
         #
         wrap_module_attrs(
@@ -211,9 +302,20 @@ class TracedCallModuleLoader(ModuleLoader):
         except Exception:
             #
             if self.module_failload is not None:
-                self.module_failload({
-                    'module_name': module_name,
-                })
+                #
+                try:
+                    self.module_failload({
+                        'module_name': module_name,
+                    })
+                #
+                except Exception:
+                    #
+                    error_msg = '# Error (69TKA)\n---\n{}---\n'.format(
+                        traceback.format_exc()
+                    )
+
+                    #
+                    print_error(error_msg)
 
             #
             raise
@@ -223,10 +325,21 @@ class TracedCallModuleLoader(ModuleLoader):
 
         #
         if self.module_postload is not None:
-            self.module_postload({
-                'module': module,
-                'module_name': module.__name__,
-            })
+            #
+            try:
+                self.module_postload({
+                    'module': module,
+                    'module_name': module.__name__,
+                })
+            #
+            except Exception:
+                #
+                error_msg = '# Error (7ZO1H)\n---\n{}---\n'.format(
+                    traceback.format_exc()
+                )
+
+                #
+                print_error(error_msg)
 
         #
         wrap_module_attrs(
@@ -270,7 +383,12 @@ class TracedCallModuleFinder(ModuleFinder):
         self.trace_handler = trace_handler
 
         #
-        for module in sys.modules.values():
+        for module_name, module in sys.modules.items():
+            #
+            print_debug(
+                '\n# ----- Existing module: {} ----- '.format(module_name)
+            )
+
             # This happens in Python 2
             if module is None:
                 continue
@@ -284,6 +402,8 @@ class TracedCallModuleFinder(ModuleFinder):
                 module=module,
                 filter=self.trace_filter,
                 handler=self.trace_handler,
+                module_origin_uri=module_name,
+                module_onwrap_uri=module_name,
                 module_existwrap=module_existwrap,
                 class_existwrap=class_existwrap,
                 call_existwrap=call_existwrap,

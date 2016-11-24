@@ -236,10 +236,10 @@ def indent_text(text, indent):
     return res
 
 
-def print_text(
+def indent_by_level(
     text,
+    level=None,
     indent_unit='        ',
-    indent_by_level=True,
     level_step_before=0,
     level_step_after=0,
     level_diff=0,
@@ -256,23 +256,25 @@ def print_text(
         level_add(level_step_before)
 
     #
-    if indent_unit is not None:
-        if indent_by_level:
-            indent = indent_unit * (level_get() + level_diff)
-        else:
-            indent = indent_unit
-
-        text = indent_text(text, indent)
+    if level is None:
+        #
+        level = level_get()
 
     #
-    print(text)
+    indent = indent_unit * (level + level_diff)
+
+    #
+    text = indent_text(text, indent)
 
     #
     if level_step_after:
         level_add(level_step_after)
 
+    #
+    return text
 
-def print_func_name(
+
+def format_func_name(
     text,
     indent_unit='        ',
     indent_by_level=True,
@@ -294,9 +296,6 @@ def print_func_name(
         level_add(level_step_before)
 
     #
-    thread_id = get_simple_thread_id()
-
-    #
     head_mark = ''
     if text.startswith('+'):
         head_mark = '+'
@@ -306,12 +305,21 @@ def print_func_name(
         head_mark = '!'
 
     #
-    if count is None or count is False:
-        count_text = ''
-    elif count is True:
-        count_text = '{} {} '.format(head_mark, count_get())
+    simple_thread_id = get_simple_thread_id()
+
+    #
+    if simple_thread_id == 0:
+        thread_text = ''
     else:
-        count_text = '{} {} '.format(head_mark, count)
+        thread_text = '{} T{}'.format(head_mark, simple_thread_id)
+
+    #
+    if count is None or count is False:
+        count_text = ' '
+    elif count is True:
+        count_text = ' {} {} '.format(head_mark, count_get())
+    else:
+        count_text = ' {} {} '.format(head_mark, count)
 
     #
     indent = ''
@@ -324,11 +332,12 @@ def print_func_name(
             indent = indent_unit
 
     #
-    text = '{head_mark} T{thread_id} {count_text}{text} {head_mark}'.format(
-        head_mark=head_mark,
-        thread_id=thread_id,
+    text = '{thread_text}{count_text}{text} {head_mark}'.format(
+        thread_text=thread_text,
         count_text=count_text,
-        text=text)
+        text=text,
+        head_mark=head_mark,
+    )
 
     #
     if figlet:
@@ -343,11 +352,45 @@ def print_func_name(
         text = indent_text(text, indent)
 
     #
-    print(text)
-
-    #
     if level_step_after:
         level_add(level_step_after)
+
+    #
+    return text
+
+
+def format_func_args(args, kwargs, repr_func):
+    #
+    pos_args_text = ', '.join(repr_func(x) for x in args)
+
+    #
+    kwd_args_text = ', '.join(
+        '{}={}'.format(
+            item[0], repr_func(item[1])
+        ) for item in sorted(
+            kwargs.items(), key=lambda i: i[0]
+        )
+    )
+
+    #
+    if pos_args_text and kwd_args_text:
+        #
+        result_text = '{}, {}'.format(pos_args_text, kwd_args_text)
+    #
+    elif pos_args_text:
+        #
+        result_text = pos_args_text
+    #
+    elif kwd_args_text:
+        #
+        result_text = kwd_args_text
+    #
+    else:
+        #
+        result_text = ''
+
+    #
+    return result_text
 
 
 def get_info_uris(info):
@@ -380,3 +423,40 @@ def get_info_uris(info):
 
     # URI list
     return uri_s
+
+
+def format_info_dict_uris(info):
+    # Get onwrap URI
+    onwrap_uri = info.get('onwrap_uri')
+
+    # Get origin URI
+    origin_uri = info.get('origin_uri', None)
+
+    # If origin URI EQ onwrap URI
+    if origin_uri == onwrap_uri:
+        # Set None to not show it
+        origin_uri = None
+
+    # Get origin attribute URI
+    origin_attr_uri = info.get('origin_attr_uri', None)
+
+    # If origin attribute URI EQ onwrap URI
+    if origin_attr_uri == onwrap_uri:
+        # Set None to not show it
+        origin_attr_uri = None
+
+    # Get text
+    uris_text = '{%s%s%s}' % (
+        "'onwrap_uri': {}".format(
+            repr(onwrap_uri)
+        ) if onwrap_uri else '',
+        ", 'origin_uri': {}".format(
+            repr(origin_uri)
+        ) if origin_uri else '',
+        ", 'origin_attr_uri': {}".format(
+            repr(origin_attr_uri)
+        ) if origin_attr_uri else '',
+    )
+
+    # Return text
+    return uris_text

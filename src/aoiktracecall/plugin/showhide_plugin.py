@@ -49,7 +49,7 @@ def showhide_filter(info, parsed_specs):
     spec_info = find_matched_spec_info(
         info=info,
         parsed_specs=parsed_specs,
-        print_info=True,
+        need_log=True,
     )
 
     #
@@ -64,20 +64,8 @@ def showhide_filter(info, parsed_specs):
         spec_arg = spec_info['spec_arg']
 
         #
-        if isinstance(spec_arg, bool):
-            info['showhide'] = spec_arg
-
-        #
-        elif isinstance(spec_arg, str):
-            if spec_arg in INFO_K_SHOWHIDE_VALUES:
-                info['showhide'] = spec_arg
-            else:
-                # Use default
-                pass
-
-        #
-        elif isinstance(spec_arg, set):
-            for value in INFO_K_SHOWHIDE_VALUES:
+        if isinstance(spec_arg, list):
+            for value in ([True, False] + list(INFO_K_SHOWHIDE_VALUES)):
                 if value in spec_arg:
                     info['showhide'] = value
 
@@ -107,7 +95,7 @@ def showhide_filter(info, parsed_specs):
 
         #
         else:
-            info['showhide'] = True
+            raise ValueError(spec_arg)
 
         #
         if info['showhide'] is False:

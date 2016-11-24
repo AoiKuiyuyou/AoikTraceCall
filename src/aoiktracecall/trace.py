@@ -10,6 +10,8 @@ from types import ModuleType
 # Internal imports
 from aoiktracecall.config import get_config
 from aoiktracecall.importer import module_finder_factory
+from aoiktracecall.logging import print_debug
+from aoiktracecall.logging import print_info
 from aoiktracecall.plugin.exception_plugin import reject_exception
 from aoiktracecall.plugin.printing_plugin import printing_filter
 from aoiktracecall.plugin.printing_plugin import printing_handler
@@ -30,7 +32,7 @@ from aoiktracecall.state import module_failload_set
 from aoiktracecall.state import module_postload_set
 from aoiktracecall.state import module_preload_set
 from aoiktracecall.util import chain_filters
-from aoiktracecall.util import print_func_name
+from aoiktracecall.util import format_func_name
 from aoiktracecall.wrap import wrap_call
 from aoiktracecall.wrap import wrap_class_attrs
 from aoiktracecall.wrap import wrap_module_attrs
@@ -259,12 +261,15 @@ def trace_calls_in_specs(
 
     :return: None.
     """
-    # Print info
-    print('')
-    print_func_name('+ trace_calls_in_specs', level_step_before=1, figlet=True)
+    # Print message
+    print_debug(
+        format_func_name(
+            '+ trace_calls_in_specs', level_step_before=1, figlet=True
+        )
+    )
 
-    # Print info
-    print('\n# ----- Parse specs -----')
+    # Print message
+    print_debug('\n# ----- Parse specs -----')
 
     # Parse specs
     parsed_specs = parse_specs(specs)
@@ -272,28 +277,37 @@ def trace_calls_in_specs(
     # For each parsed spec item
     for uri, opts_dict in parsed_specs.items():
         # Print the parsed spec item
-        print((uri, opts_dict))
+        print_debug((uri, opts_dict))
 
     # Create module pre-load callback
     def module_preload(info):
         module_name = info['module_name']
 
-        print_func_name(
-            '+ * {}'.format(module_name), level_step_before=1, count=False)
+        print_info(
+            format_func_name(
+                '+ {}'.format(module_name), level_step_before=1, count=False
+            )
+        )
 
     # Create module fail-load callback
     def module_failload(info):
         module_name = info['module_name']
 
-        print_func_name(
-            '! * {}'.format(module_name), level_step_after=-1, count=False)
+        print_info(
+            format_func_name(
+                '! {}'.format(module_name), level_step_after=-1, count=False
+            )
+        )
 
     # Create module post-load callback
     def module_postload(info):
         module_name = info['module_name']
 
-        print_func_name(
-            '- * {}'.format(module_name), level_step_after=-1, count=False)
+        print_info(
+            format_func_name(
+                '- {}'.format(module_name), level_step_after=-1, count=False
+            )
+        )
 
     def existwrap(info, ex_info_s):
         # Get info type.
@@ -311,14 +325,14 @@ def trace_calls_in_specs(
             # If info type is `callable`
             if info_type == 'callable':
                 # Print message
-                print('@@: {0} == {1}'.format(
+                print_debug('@@: {0} == {1}'.format(
                     onwrap_uri, ex_info['onwrap_uri'])
                 )
 
             # If info type is not `callable`
             else:
                 # Print message
-                print('!!: {0} == {1}'.format(
+                print_debug('!!: {0} == {1}'.format(
                     onwrap_uri, ex_info['onwrap_uri'])
                 )
 
@@ -344,7 +358,9 @@ def trace_calls_in_specs(
                 # If config `WRAP_BASE_CLASS_ATTRIBUTES` is disabled
                 if not get_config('WRAP_BASE_CLASS_ATTRIBUTES'):
                     # Print message
-                    print('!: {0} == {1}'.format(onwrap_uri, origin_attr_uri))
+                    print_debug(
+                        '!: {0} == {1}'.format(onwrap_uri, origin_attr_uri)
+                    )
 
                     # Return False to not trace the item
                     return False
@@ -354,7 +370,7 @@ def trace_calls_in_specs(
             # If origin URI and onwrap URI are different
             if origin_uri and (origin_uri != onwrap_uri):
                 # Print message
-                print('!: {0} == {1}'.format(onwrap_uri, origin_uri))
+                print_debug('!: {0} == {1}'.format(onwrap_uri, origin_uri))
 
                 # Return False to not trace the item
                 return False
@@ -363,7 +379,7 @@ def trace_calls_in_specs(
         info = showhide_filter(info=info, parsed_specs=parsed_specs)
 
         #
-        print('{0}: {1}'.format(
+        print_debug('{0}: {1}'.format(
             '@' if isinstance(info, dict) else '!',
             onwrap_uri if (onwrap_uri == origin_uri or not origin_uri) else
             '{} == {}'.format(onwrap_uri, origin_uri),
@@ -400,5 +416,9 @@ def trace_calls_in_specs(
         call_existwrap=existwrap,
     )
 
-    # Print info
-    print_func_name('- trace_calls_in_specs', level_step_after=-1, figlet=True)
+    # Print message
+    print_debug(
+        format_func_name(
+            '- trace_calls_in_specs', level_step_after=-1, figlet=True
+        )
+    )
