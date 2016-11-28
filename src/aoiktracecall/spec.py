@@ -117,11 +117,12 @@ def find_matched_spec_info(info, parsed_specs, need_log=False):
                     #
                     if need_log:
                         #
-                        print_debug(
-                            '# Info: {}\n# Spec: {}'.format(
-                                uris_text, spec_info
-                            )
+                        msg = 'Matched URIs: {}\nMatched spec: {}'.format(
+                            uris_text, spec_info
                         )
+
+                        #
+                        print_debug(msg)
 
                     #
                     return spec_info
@@ -130,9 +131,10 @@ def find_matched_spec_info(info, parsed_specs, need_log=False):
         #
         if need_log:
             #
-            print_debug(
-                '# Info: {}\n# Spec: {}'.format(uris_text, None)
-            )
+            msg = 'Matched URIs: {}\nMatched Spec: {}'.format(uris_text, None)
+
+            #
+            print_debug(msg)
 
         #
         return None

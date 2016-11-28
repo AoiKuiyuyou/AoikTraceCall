@@ -142,8 +142,19 @@ def wrap_callable(old_call, new_call=None):
             return new_call
 
 
+class _NewStyleClass(object):
+
+    def __new__(self):
+        pass
+
+
+STATICMETHOD_TYPE = type(vars(_NewStyleClass)['__new__'])
+
+del _NewStyleClass
+
+
 def is_wrappable(obj):
-    return callable(obj)
+    return callable(obj) or isinstance(obj, STATICMETHOD_TYPE)
 
 
 class ExceptionInfo(object):
@@ -295,7 +306,7 @@ def wrap_call(
             )
 
             # Print message
-            print_info(indent_by_level(msg))
+            print_info(msg)
 
         #
         info_dict = info.copy()
@@ -323,27 +334,27 @@ def wrap_call(
                 )
 
             #
-            print_error(indent_by_level(error_msg))
-
-        res_is_returned = False
+            print_error(error_msg)
 
         try:
             if func is object.__new__:
-                res = func(args[0])
+                call_result = func(args[0])
             elif func is object.__init__:
-                res = func(args[0])
+                call_result = func(args[0])
+            elif isinstance(func, STATICMETHOD_TYPE):
+                call_result = func.__func__(*args, **kwargs)
             else:
-                res = func(*args, **kwargs)
-            res_is_returned = True
+                call_result = func(*args, **kwargs)
+        except:
+            call_result = ExceptionInfo(sys.exc_info())
+
+            raise
         finally:
             #
-            if not res_is_returned:
-                #
-                res = ExceptionInfo(sys.exc_info())
+            return_info_dict['trace_hook_type'] = 'post_call'
 
             #
-            return_info_dict['trace_hook_type'] = 'post_call'
-            return_info_dict['call_result'] = res
+            return_info_dict['call_result'] = call_result
 
             #
             try:
@@ -358,7 +369,7 @@ def wrap_call(
                 )
 
                 #
-                print_error(indent_by_level(error_msg))
+                print_error(error_msg)
 
             # Decrement level
             new_level = level_add(-1)
@@ -367,20 +378,22 @@ def wrap_call(
             # This is possible if `importlib.util.find_spec` is called by the
             # traced code.
             if new_level != level - 1:
-                # Print warning
-                print_info(
-                    '# Warning (6DRSJ): Unmatched level: {} != {}. {}'.format(
+                #
+                msg = \
+                    '# Warning: Unmatched level: {} != {}. {}'.format(
                         new_level,
                         level - 1,
                         format_info_dict_uris(info)
                     )
-                )
+
+                # Print warning
+                print_info(msg)
 
                 # Set to the expected level
                 level_set(level - 1)
 
         #
-        return res
+        return call_result
 
     #
     if inspect.isclass(func):
@@ -440,7 +453,10 @@ def wrap_class_attrs(
         class_onwrap_uri = class_origin_uri
 
     #
-    print_debug('\n# ----- Process class `{}` -----'.format(class_onwrap_uri))
+    msg = '\n# ----- Process class `{}` -----'.format(class_onwrap_uri)
+
+    #
+    print_debug(msg)
 
     #
     class_info = {
@@ -455,7 +471,11 @@ def wrap_class_attrs(
         'origin_attr_class': None,
     }
 
-    print_debug(pformat(class_info, indent=4, width=1) + '\n')
+    #
+    msg = pformat(class_info, indent=4, width=1) + '\n'
+
+    #
+    print_debug(msg)
 
     # 5WGOF
     class_info = filter(class_info)
@@ -496,20 +516,52 @@ def wrap_class_attrs(
     # For each class in the MRO class list, from base class to given class
     for mro_class in reversed(mro_class_s):
         if mro_class is cls:
-            print_debug('\n# ---- Search class `{}` ----'.format(
-                class_onwrap_uri
-            ))
+            #
+            mro_class_uri = class_onwrap_uri
+
+            #
+            msg = '\n# ---- Search class `{}` ----'.format(
+                mro_class_uri
+            )
+
+            #
+            print_debug(msg)
         else:
-            print_debug('\n# ---- Search base class `{}` ----'.format(
-                to_uri(cls=mro_class)
-            ))
+            #
+            mro_class_uri = to_uri(cls=mro_class)
+
+            #
+            msg = '\n# ---- Search base class `{}` ----'.format(
+                mro_class_uri
+            )
+
+            #
+            print_debug(msg)
 
         # For the MRO class' each attribute
         for attr_name, attr_obj in sorted(
             vars(mro_class).items(), key=(lambda x: x[0])
         ):
+            #
+            msg = '\n# --- Attribute `{}.{}` ---\nType: {}'.format(
+                mro_class_uri,
+                attr_name,
+                type(attr_obj),
+            )
+
+            #
+            print_debug(msg)
+
+            # If the attribute is not wrappable
+            if not is_wrappable(attr_obj):
+                #
+                msg = 'Not wrappable.\n'
+
+                #
+                print_debug(msg)
+
             # If the attribute is wrappable
-            if is_wrappable(attr_obj):
+            else:
                 #
                 orig_func = get_wrapped_obj(attr_obj, default=attr_obj)
 
@@ -594,10 +646,19 @@ def wrap_class_attrs(
                 if existing_info is None:
                     map_orig_func_to_new_info[orig_func] = info
 
+                #
+                msg = 'Info:\n' + pformat(info, indent=4, width=1) + '\n'
+
+                #
+                print_debug(msg)
+
     #
-    print_debug('\n# ---- Process class `{}`\'s attributes ----'.format(
-        class_onwrap_uri)
+    msg = '\n# ---- Process class `{}`\'s attributes ----\n'.format(
+        class_onwrap_uri
     )
+
+    #
+    print_debug(msg)
 
     #
     for _, func_info in sorted(
@@ -607,7 +668,13 @@ def wrap_class_attrs(
         onwrap_uri = func_info['onwrap_uri']
 
         #
-        print_debug('\n# --- {} ---'.format(onwrap_uri))
+        msg = '\n# --- Wrapper `{}` ---\nInfo:\n{}\n'.format(
+            onwrap_uri,
+            pformat(func_info, indent=4, width=1),
+        )
+
+        #
+        print_debug(msg)
 
         #
         func = func_info['obj']
@@ -630,12 +697,13 @@ def wrap_class_attrs(
             )
 
             #
-            print_error(indent_by_level(error_msg))
+            print_error(error_msg)
 
             #
-            print_error(
-                indent_by_level(pformat(func_info, indent=4, width=1))
-            )
+            msg = pformat(func_info, indent=4, width=1)
+
+            #
+            print_error(msg)
 
             #
             continue
@@ -656,20 +724,22 @@ def wrap_class_attrs(
                 )
 
                 #
-                print_error(indent_by_level(error_msg))
+                print_error(error_msg)
 
                 #
-                print_error(
-                    indent_by_level(pformat(func_info, indent=4, width=1))
-                )
+                msg = pformat(func_info, indent=4, width=1)
+
+                #
+                print_error(msg)
 
                 #
                 continue
 
     #
-    print_debug(
-        '# ===== Process class `{}` ====='.format(class_origin_uri)
-    )
+    msg = '# ===== Process class `{}` =====\n'.format(class_origin_uri)
+
+    #
+    print_debug(msg)
 
     #
     return orig_cls
@@ -715,11 +785,12 @@ def wrap_module_attrs(
     }
 
     #
-    print_debug(
-        '\n# ----- Process module `{}` -----'.format(module_onwrap_uri)
+    msg = '\n# ----- Process module `{}` -----\n{}\n'.format(
+        module_onwrap_uri,
+        pformat(module_info, indent=4, width=1),
     )
 
-    print_debug(pformat(module_info, indent=4, width=1) + '\n')
+    print_debug(msg)
 
     # 2D5HA
     module_info = filter(module_info)
@@ -764,9 +835,11 @@ def wrap_module_attrs(
             )
         #
         elif is_wrappable(mod_attr_obj):
-            print_debug(
-                '\n# ----- Process callable `{}` -----'.format(onwrap_uri)
-            )
+            #
+            msg = '\n# ----- Process callable `{}` -----'.format(onwrap_uri)
+
+            #
+            print_debug(msg)
 
             #
             origin_uri = to_origin_uri(
@@ -788,7 +861,11 @@ def wrap_module_attrs(
                 'origin_attr_class': None,
             }
 
-            print_debug(pformat(info, indent=4, width=1) + '\n')
+            #
+            msg = pformat(info, indent=4, width=1) + '\n'
+
+            #
+            print_debug(msg)
 
             #
             if isinstance(info, dict):
@@ -811,12 +888,13 @@ def wrap_module_attrs(
                     )
 
                     #
-                    print_error(indent_by_level(error_msg))
+                    print_error(error_msg)
 
                     #
-                    print_error(
-                        indent_by_level(pformat(info, indent=4, width=1))
-                    )
+                    msg = pformat(info, indent=4, width=1)
+
+                    #
+                    print_error(msg)
 
                     #
                     continue
@@ -834,12 +912,13 @@ def wrap_module_attrs(
                         )
 
                         #
-                        print_error(indent_by_level(error_msg))
+                        print_error(error_msg)
 
                         #
-                        print_error(
-                            indent_by_level(pformat(info, indent=4, width=1))
-                        )
+                        msg = pformat(info, indent=4, width=1)
+
+                        #
+                        print_error(msg)
 
                         #
                         continue
@@ -847,9 +926,10 @@ def wrap_module_attrs(
             continue
 
     #
-    print_debug(
-        '# ===== Process module `{}` ====='.format(module_onwrap_uri)
-    )
+    msg = '# ===== Process module `{}` =====\n'.format(module_onwrap_uri)
+
+    #
+    print_debug(msg)
 
     #
     return module

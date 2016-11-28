@@ -14,9 +14,9 @@ from aoiktracecall.spec import find_matched_spec_info
 from aoiktracecall.state import get_simple_thread_id
 from aoiktracecall.util import format_func_args
 from aoiktracecall.util import format_func_name
-from aoiktracecall.util import indent_by_level
 from aoiktracecall.util import to_uri
 from aoiktracecall.wrap import get_wrapped_obj
+from aoiktracecall.wrap import STATICMETHOD_TYPE
 
 # Local imports
 from ..aoikinspectargs import format_inspect_info
@@ -42,7 +42,7 @@ def _repr_safe(obj, default='<?>'):
             )
 
         #
-        print_error(indent_by_level(error_msg))
+        print_error(error_msg)
 
     return default
 
@@ -251,7 +251,7 @@ def printing_handler(info, filter_func=None):
         func_name_text = self_attr_uri
 
     #
-    indent_unit = '        '
+    indent_unit = get_config('INDENT_UNIT_TEXT') or ''
 
     #
     indent_text = indent_unit * level
@@ -267,7 +267,7 @@ def printing_handler(info, filter_func=None):
 
     #
     if trace_hook_type == 'pre_call':
-        msg = '{indent}+{thread}{count}{func_name} => {args_text}\n'\
+        call_msg = '{indent}+{thread}{count}{func_name} => {args_text}\n'\
             .format(
                 indent=indent_text,
                 thread=thread_text,
@@ -280,7 +280,7 @@ def printing_handler(info, filter_func=None):
 
         result_repr = _repr_safe(result)
 
-        msg = '{indent}-{thread}{count}{func_name} <= {result}\n'\
+        call_msg = '{indent}-{thread}{count}{func_name} <= {result}\n'\
             .format(
                 indent=indent_text,
                 thread=thread_text,
@@ -376,15 +376,16 @@ def printing_handler(info, filter_func=None):
 
     #
     if pre_figlet_title is not None:
-        print_info(
-            format_func_name(
-                '+ {}'.format(pre_figlet_title), count=count, figlet=True
-            )
+        msg = format_func_name(
+            '+ {}'.format(pre_figlet_title), count=count, figlet=True
         )
+
+        print_info(msg, indent=False)
 
     #
     try:
-        print_info(msg)
+        # Notice the message is indented already.
+        print_info(call_msg, indent=False)
     except Exception:
         exc_msg = '{}\n# Error\n---\n{}---\n'.format(
             onwrap_uri,
@@ -394,37 +395,65 @@ def printing_handler(info, filter_func=None):
         print_info(exc_msg)
 
     #
-    if hasattr(func, '__code__'):
+    need_print_lineno = False
+
+    #
+    if trace_hook_type == 'pre_call':
         #
-        need_print_lineno = False
+        if get_config('SHOW_FUNC_FILE_PATH_LINENO_PRE_CALL'):
+            #
+            need_print_lineno = True
+
+    #
+    if trace_hook_type == 'post_call':
+        #
+        if get_config('SHOW_FUNC_FILE_PATH_LINENO_POST_CALL'):
+            #
+            need_print_lineno = True
+
+    #
+    if need_print_lineno:
+        #
+        file_path_lineno = ''
 
         #
-        if trace_hook_type == 'pre_call':
+        func_to_show_lineno = func
+
+        # Loop at most 5 times to avoid circle
+        for _ in range(5):
             #
-            if get_config('SHOW_FUNC_FILE_PATH_LINENO_PRE_CALL'):
+            if isinstance(func_to_show_lineno, STATICMETHOD_TYPE):
+                if hasattr(func_to_show_lineno, '__func__'):
+                    func_to_show_lineno = func_to_show_lineno.__func__
+
+            #
+            if hasattr(func_to_show_lineno, '__code__'):
                 #
-                need_print_lineno = True
+                func_code_obj = func_to_show_lineno.__code__
 
-        #
-        if trace_hook_type == 'post_call':
-            #
-            if get_config('SHOW_FUNC_FILE_PATH_LINENO_POST_CALL'):
                 #
-                need_print_lineno = True
+                if func_code_obj:
+                    #
+                    file_path_lineno += '# File: {} Line: {}\n'.format(
+                        func_code_obj.co_filename,
+                        func_code_obj.co_firstlineno,
+                    )
+
+            #
+            if hasattr(func_to_show_lineno, '__wrapped__'):
+                #
+                func_to_show_lineno = func_to_show_lineno.__wrapped__
+
+                #
+                continue
+
+            #
+            break
 
         #
-        if need_print_lineno:
+        if file_path_lineno:
             #
-            func_code_obj = func.__code__
-
-            #
-            file_path_lineno = '# File: {} Line: {}\n'.format(
-                func_code_obj.co_filename,
-                func_code_obj.co_firstlineno,
-            )
-
-            #
-            print_info(indent_by_level(file_path_lineno))
+            print_info(file_path_lineno)
 
     # If hook type is `pre_call`
     if trace_hook_type == 'pre_call':
@@ -473,20 +502,20 @@ def printing_handler(info, filter_func=None):
             )
 
             # Print message
-            print_info(indent_by_level(msg))
+            print_info(msg)
 
     #
     if args_inspect_info_debug_msg:
         # Print message
-        print_info(indent_by_level(args_inspect_info_debug_msg))
+        print_info(args_inspect_info_debug_msg)
 
     #
     if post_figlet_title is not None:
-        print_info(
-            format_func_name(
-                '- {}'.format(post_figlet_title), count=count, figlet=True
-            )
+        msg = format_func_name(
+            '- {}'.format(post_figlet_title), count=count, figlet=True
         )
+
+        print_info(msg, indent=False)
 
         post_figlet_title = None
 

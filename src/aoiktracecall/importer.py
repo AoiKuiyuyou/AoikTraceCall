@@ -385,9 +385,10 @@ class TracedCallModuleFinder(ModuleFinder):
         #
         for module_name, module in sys.modules.items():
             #
-            print_debug(
-                '\n# ----- Existing module: {} ----- '.format(module_name)
-            )
+            msg = '\n# ----- Existing module: {} ----- '.format(module_name)
+
+            #
+            print_debug(msg)
 
             # This happens in Python 2
             if module is None:

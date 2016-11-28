@@ -239,7 +239,7 @@ def indent_text(text, indent):
 def indent_by_level(
     text,
     level=None,
-    indent_unit='        ',
+    indent_unit=None,
     level_step_before=0,
     level_step_after=0,
     level_diff=0,
@@ -261,10 +261,19 @@ def indent_by_level(
         level = level_get()
 
     #
-    indent = indent_unit * (level + level_diff)
+    if indent_unit is None:
+        #
+        indent_unit = get_config('INDENT_UNIT_TEXT')
 
     #
-    text = indent_text(text, indent)
+    if indent_unit:
+        #
+        indent = indent_unit * (level + level_diff)
+
+        #
+        if indent:
+            #
+            text = indent_text(text, indent)
 
     #
     if level_step_after:
@@ -276,7 +285,7 @@ def indent_by_level(
 
 def format_func_name(
     text,
-    indent_unit='        ',
+    indent_unit=None,
     indent_by_level=True,
     level_step_before=0,
     level_step_after=0,
@@ -325,7 +334,11 @@ def format_func_name(
     indent = ''
 
     #
-    if indent_unit is not None:
+    if indent_unit is None:
+        indent_unit = get_config('INDENT_UNIT_TEXT')
+
+    #
+    if indent_unit:
         if indent_by_level:
             indent = indent_unit * (level_get() + level_diff)
         else:

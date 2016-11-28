@@ -4,6 +4,9 @@ from __future__ import absolute_import
 # Standard imports
 import logging
 
+# Internal imports
+from aoiktracecall.util import indent_by_level
+
 
 # Debug logger.
 # Initialized in `get_debug_logger`.
@@ -105,9 +108,14 @@ def get_error_logger():
     return _ERROR_LOGGER
 
 
-def print_debug(text):
+def print_debug(text, indent=True):
     # If have text
     if text:
+        # If need indent the text
+        if indent:
+            # Indent the text
+            text = indent_by_level(text)
+
         # Get logger
         logger = get_debug_logger()
 
@@ -115,9 +123,14 @@ def print_debug(text):
         logger.debug(text)
 
 
-def print_info(text):
+def print_info(text, indent=True):
     # If have text
     if text:
+        # If need indent the text
+        if indent:
+            # Indent the text
+            text = indent_by_level(text)
+
         # Get logger
         logger = get_info_logger()
 
@@ -125,9 +138,14 @@ def print_info(text):
         logger.info(text)
 
 
-def print_error(text):
+def print_error(text, indent=True):
     # If have text
     if text:
+        # If need indent the text
+        if indent:
+            # Indent the text
+            text = indent_by_level(text)
+
         # Get logger
         logger = get_error_logger()
 

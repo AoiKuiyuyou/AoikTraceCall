@@ -21,6 +21,9 @@ _CONFIG_DICT = {
     #
     'WRAP_BASE_CLASS_ATTRIBUTES': True,
 
+    # Indentation unit text
+    'INDENT_UNIT_TEXT': ' ' * 8,
+
     # Whether highlight title shows `self` argument's class instead of called
     # function's defining class.
     #
