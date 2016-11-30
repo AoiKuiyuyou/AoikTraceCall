@@ -35,6 +35,9 @@ _CONFIG_DICT = {
     # Highlight title line character count max
     'HIGHLIGHT_TITLE_LINE_CHAR_COUNT_MAX': 265,
 
+    # Whether show main thread ID
+    'SHOW_MAIN_THREAD_ID': False,
+
     # Whether show function's file path and line number in pre-call hook
     'SHOW_FUNC_FILE_PATH_LINENO_PRE_CALL': True,
 

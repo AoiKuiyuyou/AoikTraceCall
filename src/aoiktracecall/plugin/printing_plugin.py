@@ -11,6 +11,7 @@ from aoiktracecall.config import get_config
 from aoiktracecall.logging import print_error
 from aoiktracecall.logging import print_info
 from aoiktracecall.spec import find_matched_spec_info
+from aoiktracecall.state import count_get
 from aoiktracecall.state import get_simple_thread_id
 from aoiktracecall.util import format_func_args
 from aoiktracecall.util import format_func_name
@@ -36,10 +37,10 @@ def _repr_safe(obj, default='<?>'):
 
     except Exception as e:
         #
-        error_msg = "# Warning: Failed getting argument's text:\n---\n{}---\n"\
-            .format(
-                format_exc()
-            )
+        error_msg = (
+            "# Warning: Failed getting argument's repr text:\n"
+            '---\n{}---\n'
+        ).format(format_exc())
 
         #
         print_error(error_msg)
@@ -150,11 +151,41 @@ def printing_handler(info, filter_func=None):
                 )
 
     #
+    repr_func = info.pop('repr_func', _repr_safe)
+
+    #
     if inspect_info is None:
-        #
+        # If have filter function
+        if filter_func is not None:
+            # Add arguments inspect info to info dict
+            info['arguments_inspect_info'] = None
+
+            # Call filter function
+            info = filter_func(info)
+
+            # If returned info is not None
+            if info is not None:
+                # Remove arguments inspect info from info dict
+                info.pop('arguments_inspect_info', None)
+
+            # If returned info is None
+            if info is None:
+                # Ignore
+                return
+
+        # Get positional arguments to be printed
+        args_printed = info.pop('args_printed', args)
+
+        # Get keyword arguments to be printed
+        kwargs_printed = info.pop('kwargs_printed', kwargs)
+
+        # Format arguments to text
         args_text = format_func_args(
-            args=args, kwargs=kwargs, repr_func=_repr_safe
+            args=args_printed,
+            kwargs=kwargs_printed,
+            repr_func=repr_func,
         )
+
     #
     else:
         # First argument name
@@ -184,8 +215,10 @@ def printing_handler(info, filter_func=None):
             # Call filter function
             info = filter_func(info)
 
-            # Remove arguments inspect info from info dict
-            info.pop('arguments_inspect_info', None)
+            # If returned info is not None
+            if info is not None:
+                # Remove arguments inspect info from info dict
+                info.pop('arguments_inspect_info', None)
 
             # If returned info is None
             if info is None:
@@ -257,37 +290,58 @@ def printing_handler(info, filter_func=None):
     indent_text = indent_unit * level
 
     #
-    if simple_thread_id == 0:
-        thread_text = ''
-    else:
+    if simple_thread_id != 0 or get_config('SHOW_MAIN_THREAD_ID'):
         thread_text = ' T{}:'.format(simple_thread_id)
+    else:
+        thread_text = ''
 
     #
     count_text = ' {}: '.format(count)
 
     #
     if trace_hook_type == 'pre_call':
-        call_msg = '{indent}+{thread}{count}{func_name} => {args_text}\n'\
-            .format(
-                indent=indent_text,
-                thread=thread_text,
-                count=count_text,
-                func_name=func_name_text,
-                args_text='( {} )'.format(args_text) if args_text else ''
-            )
+        call_msg = (
+            '{indent}+{thread}{count}----- {func_name} ----- => {args_text}\n'
+        ).format(
+            indent=indent_text,
+            thread=thread_text,
+            count=count_text,
+            func_name=func_name_text,
+            args_text='( {} )'.format(args_text) if args_text else ''
+        )
     elif trace_hook_type == 'post_call':
-        result = info['call_result']
+        #
+        call_result = info['call_result']
 
-        result_repr = _repr_safe(result)
+        #
+        call_result_text = repr_func(call_result)
 
-        call_msg = '{indent}-{thread}{count}{func_name} <= {result}\n'\
-            .format(
+        #
+        call_result_text = call_result_text.replace('\n', '\n' + indent_text)
+
+        #
+        post_call_count = count_get()
+
+        if post_call_count == count:
+            next_count_text = ''
+        else:
+            next_count_text = '{indent}Next: {next_count}\n'.format(
                 indent=indent_text,
-                thread=thread_text,
-                count=count_text,
-                func_name=func_name_text,
-                result=result_repr,
+                next_count=post_call_count + 1
             )
+
+        # 5JKGC
+        call_msg = (
+            '{indent}-{thread}{count}===== {func_name} ===== <= {result}\n'
+            '{next_count}'
+        ).format(
+            indent=indent_text,
+            thread=thread_text,
+            count=count_text,
+            func_name=func_name_text,
+            result=call_result_text,
+            next_count=next_count_text,
+        )
     else:
         raise ValueError(trace_hook_type)
 
@@ -434,7 +488,7 @@ def printing_handler(info, filter_func=None):
                 #
                 if func_code_obj:
                     #
-                    file_path_lineno += '# File: {} Line: {}\n'.format(
+                    file_path_lineno += 'File: {} Line: {}\n'.format(
                         func_code_obj.co_filename,
                         func_code_obj.co_firstlineno,
                     )

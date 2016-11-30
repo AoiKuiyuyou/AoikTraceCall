@@ -4,7 +4,7 @@ from __future__ import absolute_import
 # Standard imports
 import imp
 import sys
-import traceback
+from traceback import format_exc
 
 # Internal imports
 from aoiktracecall.logging import print_debug
@@ -119,9 +119,10 @@ class ModuleFinder(object):
                 #
                 except Exception:
                     #
-                    error_msg = '# Error (1XCEH)\n---\n{}---\n'.format(
-                        traceback.format_exc()
-                    )
+                    error_msg = (
+                        '# Error: Callback `module_failload` raised exception:'
+                        '\n---\n{}---\n'
+                    ).format(format_exc())
 
                     #
                     print_error(error_msg)
@@ -141,9 +142,10 @@ class ModuleFinder(object):
             #
             except Exception:
                 #
-                error_msg = '# Error (2VS8S)\n---\n{}---\n'.format(
-                    traceback.format_exc()
-                )
+                error_msg = (
+                    '# Error: Callback `module_preload` raised exception:'
+                    '\n---\n{}---\n'
+                ).format(format_exc())
 
                 #
                 print_error(error_msg)
@@ -188,9 +190,10 @@ class ModuleFinder(object):
                     #
                     except Exception:
                         #
-                        error_msg = '# Error (3IPKU)\n---\n{}---\n'.format(
-                            traceback.format_exc()
-                        )
+                        error_msg = (
+                            '# Error: Callback `module_failload` raised'
+                            ' exception:\n---\n{}---\n'
+                        ).format(format_exc())
 
                         #
                         print_error(error_msg)
@@ -254,9 +257,10 @@ class TracedCallModuleLoader(ModuleLoader):
                 #
                 except Exception:
                     #
-                    error_msg = '# Error (4ZUBU)\n---\n{}---\n'.format(
-                        traceback.format_exc()
-                    )
+                    error_msg = (
+                        '# Error: Callback `module_failload` raised exception:'
+                        '\n---\n{}---\n'
+                    ).format(format_exc())
 
                     #
                     print_error(error_msg)
@@ -276,9 +280,10 @@ class TracedCallModuleLoader(ModuleLoader):
             #
             except Exception:
                 #
-                error_msg = '# Error (5POTJ)\n---\n{}---\n'.format(
-                    traceback.format_exc()
-                )
+                error_msg = (
+                    '# Error: Callback `module_postload` raised exception:'
+                    '\n---\n{}---\n'
+                ).format(format_exc())
 
                 #
                 print_error(error_msg)
@@ -310,9 +315,10 @@ class TracedCallModuleLoader(ModuleLoader):
                 #
                 except Exception:
                     #
-                    error_msg = '# Error (69TKA)\n---\n{}---\n'.format(
-                        traceback.format_exc()
-                    )
+                    error_msg = (
+                        '# Error: Callback `module_failload` raised exception:'
+                        '\n---\n{}---\n'
+                    ).format(format_exc())
 
                     #
                     print_error(error_msg)
@@ -334,9 +340,10 @@ class TracedCallModuleLoader(ModuleLoader):
             #
             except Exception:
                 #
-                error_msg = '# Error (7ZO1H)\n---\n{}---\n'.format(
-                    traceback.format_exc()
-                )
+                error_msg = (
+                    '# Error: Callback `module_postload` raised exception:'
+                    '\n---\n{}---\n'
+                ).format(format_exc())
 
                 #
                 print_error(error_msg)

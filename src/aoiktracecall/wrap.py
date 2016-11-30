@@ -17,10 +17,8 @@ from aoiktracecall.logging import print_error
 from aoiktracecall.logging import print_info
 from aoiktracecall.state import count_add
 from aoiktracecall.state import level_add
-from aoiktracecall.state import level_get
 from aoiktracecall.state import level_set
 from aoiktracecall.util import format_info_dict_uris
-from aoiktracecall.util import indent_by_level
 from aoiktracecall.util import to_origin_uri
 from aoiktracecall.util import to_uri
 
@@ -162,15 +160,13 @@ class ExceptionInfo(object):
     def __init__(self, exc_info):
         self.exc_info = exc_info
 
-        self.level = level_get()
-
     def __str__(self):
         # Get message
-        message = '\n# Error:\n---\n{}---\n'.format(
+        message = 'Exception:\n---\n{}---\n'.format(
             ''.join(traceback.format_exception(*self.exc_info)))
 
         # Return message
-        return indent_by_level(message, level=self.level)
+        return message
 
     def __repr__(self):
         return self.__str__()
