@@ -12,7 +12,7 @@ from setuptools import setup
 setup(
     name='AoikTraceCall',
 
-    version='0.0.6',
+    version='0.0.7',
 
     description=(
         'Trace Python function calls selected by regular expressions.'
