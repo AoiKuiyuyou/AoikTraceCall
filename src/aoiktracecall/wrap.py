@@ -297,7 +297,7 @@ def wrap_call(
         # If need debug info dict's URIs
         if get_config('WRAPPER_FUNC_DEBUG_INFO_DICT_URIS'):
             # Get message
-            msg = '# WRAPPER_FUNC_DEBUG_INFO_DICT_URIS: {}\n'.format(
+            msg = '# WRAPPER_FUNC_DEBUG_INFO_DICT_URIS: {}'.format(
                 format_info_dict_uris(info)
             )
 

@@ -15,6 +15,7 @@ from aoiktracecall.state import count_get
 from aoiktracecall.state import get_simple_thread_id
 from aoiktracecall.util import format_func_args
 from aoiktracecall.util import format_func_name
+from aoiktracecall.util import indent_by_level
 from aoiktracecall.util import to_uri
 from aoiktracecall.wrap import get_wrapped_obj
 from aoiktracecall.wrap import STATICMETHOD_TYPE
@@ -146,7 +147,7 @@ def printing_handler(info, filter_func=None):
         if trace_hook_type == 'pre_call':
             # Get message
             args_inspect_info_debug_msg = \
-                '# PRINTING_HANDLER_DEBUG_ARGS_INSPECT_INFO:\n{}\n'.format(
+                '# PRINTING_HANDLER_DEBUG_ARGS_INSPECT_INFO:\n{}'.format(
                     pformat(inspect_info, indent=4, width=1)
                 )
 
@@ -301,7 +302,7 @@ def printing_handler(info, filter_func=None):
     #
     if trace_hook_type == 'pre_call':
         call_msg = (
-            '{indent}+{thread}{count}----- {func_name} ----- => {args_text}\n'
+            '{indent}+{thread}{count}----- {func_name} ----- => {args_text}'
         ).format(
             indent=indent_text,
             thread=thread_text,
@@ -325,15 +326,15 @@ def printing_handler(info, filter_func=None):
         if post_call_count == count:
             next_count_text = ''
         else:
-            next_count_text = '{indent}Next: {next_count}\n'.format(
+            next_count_text = '\n{indent}Next: {next_count}'.format(
                 indent=indent_text,
                 next_count=post_call_count + 1
             )
 
         # 5JKGC
         call_msg = (
-            '{indent}-{thread}{count}===== {func_name} ===== <= {result}\n'
-            '{next_count}'
+            '{indent}-{thread}{count}===== {func_name} ===== <= {result}'
+            '{next_count}\n'
         ).format(
             indent=indent_text,
             thread=thread_text,
@@ -428,25 +429,21 @@ def printing_handler(info, filter_func=None):
         else:
             post_figlet_title = title
 
+    # Message list
+    msg_s = []
+
     #
     if pre_figlet_title is not None:
+        # Get message
         msg = format_func_name(
             '+ {}'.format(pre_figlet_title), count=count, figlet=True
         )
 
-        print_info(msg, indent=False)
+        # Add message to list
+        msg_s.append(msg)
 
-    #
-    try:
-        # Notice the message is indented already.
-        print_info(call_msg, indent=False)
-    except Exception:
-        exc_msg = '{}\n# Error\n---\n{}---\n'.format(
-            onwrap_uri,
-            format_exc(),
-        )
-
-        print_info(exc_msg)
+    # Add message to list
+    msg_s.append(call_msg)
 
     #
     need_print_lineno = False
@@ -488,7 +485,7 @@ def printing_handler(info, filter_func=None):
                 #
                 if func_code_obj:
                     #
-                    file_path_lineno += 'File: {} Line: {}\n'.format(
+                    file_path_lineno += 'File: {} Line: {}'.format(
                         func_code_obj.co_filename,
                         func_code_obj.co_firstlineno,
                     )
@@ -506,8 +503,8 @@ def printing_handler(info, filter_func=None):
 
         #
         if file_path_lineno:
-            #
-            print_info(file_path_lineno)
+            # Add message to list
+            msg_s.append(indent_by_level(file_path_lineno))
 
     # If hook type is `pre_call`
     if trace_hook_type == 'pre_call':
@@ -549,29 +546,40 @@ def printing_handler(info, filter_func=None):
                     self_arg_value
 
             # Get message
-            msg = '# {}:\n{}\n'.format(
+            msg = '# {}:\n{}'.format(
                 'PRINTING_HANDLER_DEBUG_INFO_DICT_SAFE' if
                 need_debug_safe else 'PRINTING_HANDLER_DEBUG_INFO_DICT',
                 pformat(debug_info, indent=4),
             )
 
-            # Print message
-            print_info(msg)
+            # Add message to list
+            msg_s.append(indent_by_level(msg))
 
     #
     if args_inspect_info_debug_msg:
-        # Print message
-        print_info(args_inspect_info_debug_msg)
+        # Add message to list
+        msg_s.append(indent_by_level(args_inspect_info_debug_msg))
 
     #
     if post_figlet_title is not None:
+        # Get message
         msg = format_func_name(
             '- {}'.format(post_figlet_title), count=count, figlet=True
         )
 
-        print_info(msg, indent=False)
+        # Add message to list
+        msg_s.append(msg)
 
-        post_figlet_title = None
+    # If have messages
+    if msg_s:
+        # Add a space to get one more newline when joined
+        msg_s.append('')
 
-    #
+    # Join messages
+    msg = '\n'.join(msg_s)
+
+    # Print message
+    print_info(msg, indent=False)
+
+    # Return info dict
     return info
